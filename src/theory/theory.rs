@@ -117,18 +117,18 @@ impl Theory {
             return false;
         }
 
-        let mut state: HashMap<&String, u8> = HashMap::new();
+        let mut state: HashMap<String, u8> = HashMap::new();
         fn dfs(
-            node: &String,
+            node: &str,
             edges: &HashMap<String, HashSet<String>>,
-            state: &mut HashMap<&String, u8>,
+            state: &mut HashMap<String, u8>,
         ) -> bool {
             match state.get(node) {
                 Some(1) => return true,  // back-edge => cycle
                 Some(2) => return false, // already processed
                 _ => {}
             }
-            state.insert(node, 1);
+            state.insert(node.to_string(), 1);
             if let Some(neigh) = edges.get(node) {
                 for next in neigh {
                     if dfs(next, edges, state) {
@@ -136,7 +136,7 @@ impl Theory {
                     }
                 }
             }
-            state.insert(node, 2);
+            state.insert(node.to_string(), 2);
             false
         }
 

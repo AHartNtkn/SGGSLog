@@ -175,14 +175,17 @@ mod tests {
             ],
         );
 
-        let interp1 = trail.prefix(1).interpretation();
+        let prefix1 = trail.prefix(1);
+        let interp1 = prefix1.interpretation();
         assert!(interp1.is_uniformly_true(&p_a));
         assert!(interp1.is_uniformly_false(&q_a));
 
-        let interp2 = trail.prefix(2).interpretation();
+        let prefix2 = trail.prefix(2);
+        let interp2 = prefix2.interpretation();
         assert!(interp2.is_uniformly_true(&q_a));
 
-        let interp3 = trail.prefix(3).interpretation();
+        let prefix3 = trail.prefix(3);
+        let interp3 = prefix3.interpretation();
         assert!(interp3.is_uniformly_true(&r_fa_ga));
     }
 }
