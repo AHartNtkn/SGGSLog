@@ -11,6 +11,7 @@ pub mod parser;
 pub mod theory;
 pub mod repl;
 pub mod jupyter;
+pub mod session;
 
 #[cfg(test)]
 mod tests;

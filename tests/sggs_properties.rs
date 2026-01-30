@@ -99,6 +99,15 @@ proptest! {
     }
 
     #[test]
+    fn prop_clause_variables_complete(clause in any_clause()) {
+        let mut manual = HashSet::new();
+        for lit in &clause.literals {
+            collect_vars_literal(lit, &mut manual);
+        }
+        prop_assert_eq!(clause.variables(), manual);
+    }
+
+    #[test]
     fn prop_clause_is_ground_semantics(clause in any_clause()) {
         // Ground iff no variables
         let vars = clause.variables();
@@ -154,5 +163,11 @@ fn collect_vars_term(term: &Term, acc: &mut HashSet<Var>) {
                 collect_vars_term(arg, acc);
             }
         }
+    }
+}
+
+fn collect_vars_literal(lit: &Literal, acc: &mut HashSet<Var>) {
+    for arg in &lit.atom.args {
+        collect_vars_term(arg, acc);
     }
 }

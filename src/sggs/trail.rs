@@ -15,6 +15,20 @@ pub struct Trail {
     initial_interp: InitialInterpretation,
 }
 
+/// Error when validating a clause against SGGS trail invariants.
+#[derive(Debug, Clone)]
+pub struct TrailError {
+    pub message: String,
+}
+
+impl std::fmt::Display for TrailError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for TrailError {}
+
 /// The interpretation induced by a trail.
 pub struct TrailInterpretation<'a> {
     trail: &'a Trail,
@@ -39,6 +53,11 @@ impl Trail {
     /// Add a clause to the trail.
     pub fn push(&mut self, clause: ConstrainedClause) {
         todo!("Trail::push implementation")
+    }
+
+    /// Add a clause to the trail after validating SGGS invariants.
+    pub fn push_checked(&mut self, _clause: ConstrainedClause) -> Result<(), TrailError> {
+        todo!("Trail::push_checked implementation")
     }
 
     /// Get a prefix of this trail.
@@ -187,5 +206,42 @@ mod tests {
         let prefix3 = trail.prefix(3);
         let interp3 = prefix3.interpretation();
         assert!(interp3.is_uniformly_true(&r_fa_ga));
+    }
+
+    #[test]
+    fn test_trail_new_len_empty() {
+        let trail = Trail::new(InitialInterpretation::AllNegative);
+        assert_eq!(trail.len(), 0);
+        assert!(trail.is_empty());
+    }
+
+    #[test]
+    fn test_trail_push_and_prefix_roundtrip() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
+        trail.push(unit(Literal::pos("Q", vec![Term::constant("b")])));
+
+        assert_eq!(trail.len(), 2);
+        let prefix = trail.prefix(1);
+        assert_eq!(prefix.len(), 1);
+        assert_eq!(prefix.clauses()[0].selected_literal(), trail.clauses()[0].selected_literal());
+    }
+
+    #[test]
+    fn test_find_conflict_clause_index() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
+        // All-positive clause is uniformly false under I⁻ with empty trail prefix.
+        let conflict = ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::pos("Q", vec![Term::constant("b")]),
+                Literal::pos("R", vec![Term::constant("c")]),
+            ]),
+            Constraint::True,
+            0,
+        );
+        trail.push(conflict);
+
+        assert_eq!(trail.find_conflict(), Some(1));
     }
 }

@@ -12,9 +12,10 @@ mod factoring;
 mod move_op;
 mod assignment;
 mod derivation;
+mod query;
 
 pub use interpretation::InitialInterpretation;
-pub use trail::{Trail, TrailInterpretation};
+pub use trail::{Trail, TrailInterpretation, TrailError};
 pub use constrained::ConstrainedClause;
 pub use extension::{sggs_extension, ExtensionResult};
 pub use resolution::{sggs_resolution, ResolutionResult};
@@ -24,4 +25,5 @@ pub use deletion::{sggs_deletion, is_disposable};
 pub use factoring::sggs_factoring;
 pub use move_op::{sggs_move, MoveError};
 pub use assignment::{Assignments, compute_assignments};
-pub use derivation::{derive, DerivationResult, DerivationConfig, Model};
+pub use derivation::{derive, DerivationResult, DerivationConfig, Model, InferenceRule, next_inference};
+pub use query::{Query, QueryResult, answer_query};

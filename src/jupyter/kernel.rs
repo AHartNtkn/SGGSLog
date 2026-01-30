@@ -1,12 +1,10 @@
 //! Jupyter kernel implementation.
 
-use crate::theory::Theory;
-use crate::sggs::DerivationConfig;
+use crate::session::Session;
 
 /// Jupyter kernel for SGGSLog.
 pub struct Kernel {
-    theory: Theory,
-    config: DerivationConfig,
+    session: Session,
 }
 
 impl Kernel {
@@ -40,3 +38,18 @@ impl std::fmt::Display for KernelError {
 }
 
 impl std::error::Error for KernelError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_kernel_new_constructs() {
+        let _ = Kernel::new();
+    }
+
+    #[test]
+    fn test_kernel_default_constructs() {
+        let _ = Kernel::default();
+    }
+}

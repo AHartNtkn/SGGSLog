@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use super::literal::Literal;
+use super::order::AtomOrder;
 use super::term::{Term, Var};
 
 /// A clause is a disjunction of literals.
@@ -91,9 +92,29 @@ impl Clause {
         todo!("Clause::is_ground_preserving implementation")
     }
 
-    /// Check if this clause is restrained (BW20 Def. 6).
-    pub fn is_restrained(&self) -> bool {
+    /// Check if this clause is restrained (BW20 Def. 6) under a given atom ordering.
+    pub fn is_restrained<O: AtomOrder>(&self, _order: &O) -> bool {
         todo!("Clause::is_restrained implementation")
+    }
+
+    /// Check if this clause is in the PVD fragment (Def. 12, SGGSdpFOL).
+    pub fn is_pvd(&self) -> bool {
+        todo!("Clause::is_pvd implementation")
+    }
+
+    /// Check if this clause is sort-restrained for a given set of infinite sorts (Def. 10)
+    /// under a given atom ordering.
+    pub fn is_sort_restrained<O: AtomOrder>(
+        &self,
+        _infinite_sorts: &HashSet<String>,
+        _order: &O,
+    ) -> bool {
+        todo!("Clause::is_sort_restrained implementation")
+    }
+
+    /// Check if this clause is sort-refined PVD for a given set of infinite sorts (Def. 13).
+    pub fn is_sort_refined_pvd(&self, _infinite_sorts: &HashSet<String>) -> bool {
+        todo!("Clause::is_sort_refined_pvd implementation")
     }
 }
 

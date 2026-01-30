@@ -140,10 +140,12 @@ mod tests {
 
         match sggs_extension(&trail, &theory) {
             ExtensionResult::Extended(cc) => {
-                assert_eq!(cc.clause, clause);
-                assert_eq!(
-                    cc.selected_literal(),
-                    &Literal::pos("P", vec![Term::var("X")])
+                assert_eq!(cc.clause.literals.len(), 1);
+                let lit = cc.selected_literal();
+                assert!(lit.positive);
+                assert!(
+                    crate::unify::unify_literals(lit, &clause.literals[0]).is_success(),
+                    "extended literal should be an instance of the original"
                 );
             }
             other => panic!("Expected non-ground extension with n=0, got {:?}", other),

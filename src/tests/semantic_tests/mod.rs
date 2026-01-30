@@ -45,3 +45,6 @@ mod fragment_semantics;
 mod move_semantics;
 mod splitting_semantics;
 mod proptests;
+mod query_semantics;
+mod session_semantics;
+mod fairness_semantics;

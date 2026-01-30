@@ -93,3 +93,44 @@ fn extension_uses_simultaneous_unification_of_i_true_literals() {
         other => panic!("Expected Extended for simultaneous unification, got {:?}", other),
     }
 }
+
+#[test]
+fn extension_inherits_constraints_from_side_premises() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let constrained = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        crate::constraint::Constraint::Atomic(
+            crate::constraint::AtomicConstraint::NotIdentical(
+                Term::var("x"),
+                Term::constant("a"),
+            ),
+        ),
+        0,
+    );
+    trail.push(constrained);
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("Q", vec![Term::var("X")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => {
+            let mut found = false;
+            for v in cc.clause.variables() {
+                let constraint = crate::constraint::Constraint::Atomic(
+                    crate::constraint::AtomicConstraint::NotIdentical(
+                        Term::Var(v.clone()),
+                        Term::constant("a"),
+                    ),
+                );
+                if !cc.constraint.intersects(&constraint.not()) {
+                    found = true;
+                    break;
+                }
+            }
+            assert!(found, "extension should inherit side-premise constraints");
+        }
+        other => panic!("Expected extension, got {:?}", other),
+    }
+}

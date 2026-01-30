@@ -70,9 +70,10 @@ fn constraint_intersection_basic() {
         "f".to_string(),
     ));
     let inter = c1.intersect(&c2);
-    let expected = Constraint::And(Box::new(c1.clone()), Box::new(c2.clone()));
-    assert_eq!(inter, expected);
     assert!(inter.is_satisfiable());
+    // Intersection should entail both operands (even if simplified).
+    assert!(!inter.intersects(&c1.not()));
+    assert!(!inter.intersects(&c2.not()));
 }
 
 #[test]

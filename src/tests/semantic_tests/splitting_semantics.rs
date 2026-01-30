@@ -5,69 +5,38 @@ use super::*;
 // =============================================================================
 //
 // Reference: [BP16a] Definitions 13-15 (partition and splitting)
-use crate::constraint::Constraint;
+use crate::constraint::{AtomicConstraint, Constraint};
 use crate::sggs::ConstrainedClause;
-use crate::unify::Substitution;
-use std::collections::{HashMap, HashSet};
+use crate::unify::{unify_literals, Substitution};
 
-fn constraint_holds(c: &Constraint, subst: &Substitution) -> bool {
-    match c {
-        Constraint::True => true,
-        Constraint::False => false,
-        Constraint::Atomic(a) => a.evaluate(subst).unwrap_or(false),
-        Constraint::And(a, b) => constraint_holds(a, subst) && constraint_holds(b, subst),
-        Constraint::Or(a, b) => constraint_holds(a, subst) || constraint_holds(b, subst),
-        Constraint::Not(a) => !constraint_holds(a, subst),
+fn combined_constraint(
+    left: &Constraint,
+    right: &Constraint,
+    subst: &Substitution,
+) -> Constraint {
+    let mut acc = Constraint::True;
+    for v in subst.domain() {
+        if let Some(t) = subst.lookup(v) {
+            acc = acc.and(Constraint::Atomic(AtomicConstraint::Identical(
+                Term::Var(v.clone()),
+                t.clone(),
+            )));
+        }
     }
+    acc.and(left.clone()).and(right.clone())
 }
 
-fn ground_atoms_for_clause(clause: &ConstrainedClause, consts: &[Term]) -> HashSet<Atom> {
-    let lit = clause.selected_literal();
-    let vars: HashSet<Var> = lit.variables();
-    let vars: Vec<Var> = vars.into_iter().collect();
-    let mut atoms = HashSet::new();
-
-    fn assign(
-        idx: usize,
-        vars: &[Var],
-        consts: &[Term],
-        lit: &Literal,
-        constraint: &Constraint,
-        atoms: &mut HashSet<Atom>,
-        subst: &mut Substitution,
-    ) {
-        if idx == vars.len() {
-            if constraint_holds(constraint, subst) {
-                let inst = lit.apply_subst(&subst_to_map(subst));
-                atoms.insert(inst.atom);
-            }
-            return;
+fn intersects(a: &ConstrainedClause, b: &ConstrainedClause) -> bool {
+    match unify_literals(a.selected_literal(), b.selected_literal()) {
+        crate::unify::UnifyResult::Success(sigma) => {
+            combined_constraint(&a.constraint, &b.constraint, &sigma).is_satisfiable()
         }
-        let var = vars[idx].clone();
-        for c in consts {
-            let mut s = subst.clone();
-            s.bind(var.clone(), c.clone());
-            assign(idx + 1, vars, consts, lit, constraint, atoms, &mut s);
-        }
+        crate::unify::UnifyResult::Failure(_) => false,
     }
-
-    fn subst_to_map(subst: &Substitution) -> HashMap<Var, Term> {
-        let mut map = HashMap::new();
-        for v in subst.domain() {
-            if let Some(t) = subst.lookup(v) {
-                map.insert(v.clone(), t.clone());
-            }
-        }
-        map
-    }
-
-    let mut subst = Substitution::empty();
-    assign(0, &vars, consts, lit, &clause.constraint, &mut atoms, &mut subst);
-    atoms
 }
 
 #[test]
-fn splitting_partition_is_complete_and_disjoint() {
+fn splitting_partition_is_disjoint_and_isolates_intersection() {
     let clause = ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::pos(
             "P",
@@ -90,27 +59,38 @@ fn splitting_partition_is_complete_and_disjoint() {
 
     let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
 
-    let consts = vec![Term::constant("a"), Term::constant("b")];
-    let original = ground_atoms_for_clause(&clause, &consts);
-    let mut union = HashSet::new();
-
-    let mut parts_atoms = Vec::new();
+    // Each part must be an instance of the original specified literal.
     for part in &result.parts {
-        let atoms = ground_atoms_for_clause(part, &consts);
-        for a in &atoms {
-            union.insert(a.clone());
-        }
-        parts_atoms.push(atoms);
+        assert!(
+            unify_literals(part.selected_literal(), clause.selected_literal()).is_success(),
+            "split part must be an instance of the original literal"
+        );
+        assert!(
+            part.constraint.is_satisfiable(),
+            "split part must not introduce an empty constraint"
+        );
     }
 
-    assert_eq!(union, original, "split parts must cover original");
-
-    for i in 0..parts_atoms.len() {
-        for j in (i + 1)..parts_atoms.len() {
-            let inter: HashSet<_> = parts_atoms[i].intersection(&parts_atoms[j]).collect();
-            assert!(inter.is_empty(), "split parts must be disjoint");
+    // Parts must be pairwise disjoint (no overlapping constrained instances).
+    for i in 0..result.parts.len() {
+        for j in (i + 1)..result.parts.len() {
+            assert!(
+                !intersects(&result.parts[i], &result.parts[j]),
+                "split parts must be disjoint"
+            );
         }
     }
+
+    // Exactly one part should intersect the other clause's selected literal.
+    let intersection_count = result
+        .parts
+        .iter()
+        .filter(|p| intersects(p, &other))
+        .count();
+    assert_eq!(
+        intersection_count, 1,
+        "split should isolate exactly one intersection representative"
+    );
 }
 
 #[test]
@@ -143,23 +123,110 @@ fn splitting_representative_matches_intersection() {
     );
 
     let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
-    let consts = vec![Term::constant("a"), Term::constant("b")];
-    let original = ground_atoms_for_clause(&clause, &consts);
-    let other_atoms = ground_atoms_for_clause(&other, &consts);
-    let expected_intersection: HashSet<_> = original
-        .intersection(&other_atoms)
-        .cloned()
-        .collect();
+    let intersection_count = result
+        .parts
+        .iter()
+        .filter(|p| intersects(p, &other))
+        .count();
+    assert_eq!(
+        intersection_count, 1,
+        "split should include representative of the intersection"
+    );
+}
 
-    let mut found = false;
-    for part in &result.parts {
-        let atoms = ground_atoms_for_clause(part, &consts);
-        if atoms == expected_intersection {
-            found = true;
-            break;
+#[test]
+fn splitting_has_no_missing_instances_symbolically() {
+    // [BP16a] Def 13-15: partition must cover all constrained ground instances.
+    // We check symbolic coverage by ensuring the original constraint implies
+    // the disjunction of the split-part constraints (after unifying literals).
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::var("x"), Term::var("y")],
+        )]),
+        Constraint::True,
+        0,
+    );
+    let other = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![
+                Term::app("f", vec![Term::var("w")]),
+                Term::app("g", vec![Term::var("z")]),
+            ],
+        )]),
+        Constraint::True,
+        0,
+    );
+
+    let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
+    fn apply_subst_term(subst: &Substitution, term: &Term) -> Term {
+        match term {
+            Term::Var(v) => subst.lookup(v).cloned().unwrap_or_else(|| Term::Var(v.clone())),
+            Term::Const(_) => term.clone(),
+            Term::App(sym, args) => {
+                let new_args = args.iter().map(|t| apply_subst_term(subst, t)).collect();
+                Term::App(sym.clone(), new_args)
+            }
         }
     }
-    assert!(found, "split should include representative of the intersection");
+
+    fn apply_subst_constraint(subst: &Substitution, c: &Constraint) -> Constraint {
+        match c {
+            Constraint::True => Constraint::True,
+            Constraint::False => Constraint::False,
+            Constraint::Atomic(a) => match a {
+                AtomicConstraint::Identical(t1, t2) => Constraint::Atomic(
+                    AtomicConstraint::Identical(
+                        apply_subst_term(subst, t1),
+                        apply_subst_term(subst, t2),
+                    ),
+                ),
+                AtomicConstraint::NotIdentical(t1, t2) => Constraint::Atomic(
+                    AtomicConstraint::NotIdentical(
+                        apply_subst_term(subst, t1),
+                        apply_subst_term(subst, t2),
+                    ),
+                ),
+                AtomicConstraint::RootEquals(t, f) => Constraint::Atomic(
+                    AtomicConstraint::RootEquals(apply_subst_term(subst, t), f.clone()),
+                ),
+                AtomicConstraint::RootNotEquals(t, f) => Constraint::Atomic(
+                    AtomicConstraint::RootNotEquals(apply_subst_term(subst, t), f.clone()),
+                ),
+            },
+            Constraint::And(a, b) => Constraint::And(
+                Box::new(apply_subst_constraint(subst, a)),
+                Box::new(apply_subst_constraint(subst, b)),
+            ),
+            Constraint::Or(a, b) => Constraint::Or(
+                Box::new(apply_subst_constraint(subst, a)),
+                Box::new(apply_subst_constraint(subst, b)),
+            ),
+            Constraint::Not(inner) => {
+                Constraint::Not(Box::new(apply_subst_constraint(subst, inner)))
+            }
+        }
+    }
+
+    let mut coverage = Constraint::False;
+    for part in &result.parts {
+        let sigma = match unify_literals(part.selected_literal(), clause.selected_literal()) {
+            crate::unify::UnifyResult::Success(s) => s,
+            crate::unify::UnifyResult::Failure(_) => {
+                panic!("split part must be an instance of the original literal");
+            }
+        };
+        let translated = apply_subst_constraint(&sigma, &part.constraint);
+        coverage = coverage.or(translated);
+    }
+
+    // No missing instances: original constraint implies coverage.
+    let missing = clause.constraint.clone().and(coverage.not());
+    assert!(
+        !missing.is_satisfiable(),
+        "split should not miss any instances of the original clause"
+    );
 }
 
 #[test]

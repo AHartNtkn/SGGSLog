@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use crate::syntax::Atom;
 use crate::theory::Theory;
-use super::InitialInterpretation;
+use super::{InitialInterpretation, Trail};
 
 /// Result of SGGS derivation.
 #[derive(Debug)]
@@ -48,4 +48,22 @@ impl Default for DerivationConfig {
 /// a model (proving satisfiability).
 pub fn derive(_theory: &Theory, _config: DerivationConfig) -> DerivationResult {
     todo!("derive implementation")
+}
+
+/// Inference rules used in SGGS derivations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InferenceRule {
+    Extension,
+    Resolution,
+    Splitting,
+    LeftSplit,
+    Factoring,
+    Move,
+    Deletion,
+    None,
+}
+
+/// Choose the next inference rule according to a fair, sensible strategy (Def. 32).
+pub fn next_inference(_trail: &Trail, _theory: &Theory) -> InferenceRule {
+    todo!("next_inference implementation")
 }

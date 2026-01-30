@@ -36,6 +36,68 @@ impl Theory {
         &self.clauses
     }
 
+    /// Check if every clause is ground-preserving.
+    pub fn is_ground_preserving(&self) -> bool {
+        self.clauses.iter().all(|c| c.is_ground_preserving())
+    }
+
+    /// Check if every clause is restrained.
+    pub fn is_restrained<O: crate::syntax::AtomOrder>(&self, order: &O) -> bool {
+        self.clauses.iter().all(|c| c.is_restrained(order))
+    }
+
+    /// Check if every clause is in the PVD fragment.
+    pub fn is_pvd(&self) -> bool {
+        self.clauses.iter().all(|c| c.is_pvd())
+    }
+
+    /// Check if every clause is sort-restrained for the given set of infinite sorts.
+    pub fn is_sort_restrained<O: crate::syntax::AtomOrder>(
+        &self,
+        infinite_sorts: &std::collections::HashSet<String>,
+        order: &O,
+    ) -> bool {
+        self.clauses
+            .iter()
+            .all(|c| c.is_sort_restrained(infinite_sorts, order))
+    }
+
+    /// Check if every clause is sort-refined PVD for the given set of infinite sorts.
+    pub fn is_sort_refined_pvd(
+        &self,
+        infinite_sorts: &std::collections::HashSet<String>,
+    ) -> bool {
+        self.clauses.iter().all(|c| c.is_sort_refined_pvd(infinite_sorts))
+    }
+
+    /// Check if this theory is in EPR (no function symbols of arity > 0).
+    pub fn is_epr(&self) -> bool {
+        use crate::syntax::Term;
+        for clause in &self.clauses {
+            for lit in &clause.literals {
+                for term in &lit.atom.args {
+                    let mut stack = vec![term];
+                    while let Some(t) = stack.pop() {
+                        if let Term::App(sym, args) = t {
+                            if sym.arity > 0 {
+                                return false;
+                            }
+                            for a in args {
+                                stack.push(a);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Check if this theory is in the BDI fragment.
+    pub fn is_bdi(&self) -> bool {
+        todo!("Theory::is_bdi implementation")
+    }
+
     /// Check if this theory is stratified.
     pub fn is_stratified(&self) -> bool {
         use std::collections::{HashMap, HashSet};

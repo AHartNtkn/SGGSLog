@@ -95,3 +95,18 @@ fn assignment_selected_i_true_only_if_possible() {
     // Selected I-true literal ¬Q(a) has no dependency, so remains unassigned.
     assert_eq!(assigns.assigned_to(1, 1), None);
 }
+
+#[test]
+fn assignment_ignores_i_false_literals() {
+    // Under I⁻, positive literals are I-false and should not be assigned.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let c1 = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    );
+    trail.push(c1);
+
+    let assigns = compute_assignments(&trail);
+    assert_eq!(assigns.assigned_to(0, 0), None);
+}

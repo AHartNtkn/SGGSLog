@@ -218,6 +218,72 @@ mod tests {
         }
     }
 
+    // === Root symbol tests ===
+
+    #[test]
+    fn test_root_symbol_var_none() {
+        let term = Term::var("X");
+        assert_eq!(term.root_symbol(), None);
+    }
+
+    #[test]
+    fn test_root_symbol_const_and_app() {
+        let c = Term::constant("a");
+        assert_eq!(c.root_symbol(), Some("a"));
+        let app = Term::app("f", vec![Term::var("X")]);
+        assert_eq!(app.root_symbol(), Some("f"));
+    }
+
+    // === Occurs tests ===
+
+    #[test]
+    fn test_occurs_direct_and_nested() {
+        let v = Var::new("X");
+        let term = Term::app("f", vec![Term::var("X"), Term::constant("a")]);
+        assert!(term.occurs(&v));
+        let nested = Term::app("g", vec![term.clone()]);
+        assert!(nested.occurs(&v));
+    }
+
+    #[test]
+    fn test_occurs_false_when_absent() {
+        let v = Var::new("X");
+        let term = Term::app("f", vec![Term::var("Y")]);
+        assert!(!term.occurs(&v));
+    }
+
+    // === Substitution tests ===
+
+    #[test]
+    fn test_apply_subst_recursive() {
+        let term = Term::app(
+            "f",
+            vec![Term::var("X"), Term::app("g", vec![Term::var("Y")])],
+        );
+        let mut subst = std::collections::HashMap::new();
+        subst.insert(Var::new("X"), Term::constant("a"));
+        subst.insert(Var::new("Y"), Term::constant("b"));
+        let applied = term.apply_subst(&subst);
+        assert_eq!(
+            applied,
+            Term::app(
+                "f",
+                vec![Term::constant("a"), Term::app("g", vec![Term::constant("b")])]
+            )
+        );
+    }
+
+    // === Variables tests ===
+
+    #[test]
+    fn test_variables_collects_all() {
+        let term = Term::app("f", vec![Term::var("X"), Term::app("g", vec![Term::var("Y")])]);
+        let vars = term.variables();
+        assert_eq!(vars.len(), 2);
+        assert!(vars.contains(&Var::new("X")));
+        assert!(vars.contains(&Var::new("Y")));
+    }
+
     #[test]
     fn test_app_with_sort_construction() {
         let term = Term::app_with_sort(

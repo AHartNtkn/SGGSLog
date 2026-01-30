@@ -198,6 +198,30 @@ mod tests {
         assert!(!lit1.is_complementary(&lit2));
     }
 
+    // === Substitution and variable collection tests ===
+
+    #[test]
+    fn test_literal_apply_subst_preserves_sign() {
+        let lit = Literal::neg("p", vec![Term::var("X"), Term::constant("a")]);
+        let mut subst = std::collections::HashMap::new();
+        subst.insert(Var::new("X"), Term::constant("b"));
+        let applied = lit.apply_subst(&subst);
+        assert!(!applied.positive);
+        assert_eq!(
+            applied.atom.args,
+            vec![Term::constant("b"), Term::constant("a")]
+        );
+    }
+
+    #[test]
+    fn test_literal_variables_collected() {
+        let lit = Literal::pos("p", vec![Term::var("X"), Term::app("f", vec![Term::var("Y")])]);
+        let vars = lit.variables();
+        assert_eq!(vars.len(), 2);
+        assert!(vars.contains(&Var::new("X")));
+        assert!(vars.contains(&Var::new("Y")));
+    }
+
     // === Variables tests ===
 
     #[test]

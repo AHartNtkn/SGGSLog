@@ -58,7 +58,6 @@ fn selected_literal_must_be_i_false_under_i_positive() {
 }
 
 #[test]
-#[should_panic]
 fn trail_rejects_i_true_selection_when_i_false_available() {
     // [BP16a] Def 1: if a clause has I-false literals, one of them must be selected.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
@@ -68,7 +67,13 @@ fn trail_rejects_i_true_selection_when_i_false_available() {
     ]);
     // Select the I-true literal, which violates the SGGS clause sequence invariant.
     let constrained = ConstrainedClause::new(clause, 1);
-    trail.push(constrained);
+    let err = trail
+        .push_checked(constrained)
+        .expect_err("expected invalid selection to be rejected");
+    assert!(
+        err.message.to_lowercase().contains("i-false"),
+        "error should mention I-false selection requirement"
+    );
 }
 
 // -------------------------------------------------------------------------
@@ -231,6 +236,43 @@ fn i_false_selected_reports_only_i_false_literals() {
         !indices.contains(&1),
         "I-true selected literal should not be reported"
     );
+}
+
+#[test]
+fn interpretation_respects_constraints_on_selected_literals() {
+    // Selected P(x) with constraint x ≠ a should make P(b) true but not P(a) under I⁻.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let constrained = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::Atomic(AtomicConstraint::NotIdentical(
+            Term::var("x"),
+            Term::constant("a"),
+        )),
+        0,
+    );
+    trail.push(constrained);
+    let interp = trail.interpretation();
+    let p_a = Literal::pos("P", vec![Term::constant("a")]);
+    let p_b = Literal::pos("P", vec![Term::constant("b")]);
+    assert!(interp.is_uniformly_false(&p_a));
+    assert!(interp.is_uniformly_true(&p_b));
+}
+
+#[test]
+fn trail_completeness_simple_theory() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "P",
+        vec![Term::constant("a")],
+    )]));
+
+    assert!(!trail.is_complete(&theory));
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    assert!(trail.is_complete(&theory));
 }
 
 // -------------------------------------------------------------------------

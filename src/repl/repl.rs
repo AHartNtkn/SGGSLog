@@ -1,7 +1,6 @@
 //! REPL implementation.
 
-use crate::theory::Theory;
-use crate::sggs::DerivationConfig;
+use crate::session::Session;
 
 /// REPL error.
 #[derive(Debug)]
@@ -19,8 +18,7 @@ impl std::error::Error for ReplError {}
 
 /// Interactive REPL for SGGSLog.
 pub struct Repl {
-    theory: Theory,
-    config: DerivationConfig,
+    session: Session,
 }
 
 impl Repl {
@@ -48,5 +46,20 @@ impl Repl {
 impl Default for Repl {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_repl_new_constructs() {
+        let _ = Repl::new();
+    }
+
+    #[test]
+    fn test_repl_default_constructs() {
+        let _ = Repl::default();
     }
 }
