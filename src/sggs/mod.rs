@@ -1,29 +1,32 @@
 //! SGGS (Semantically Guided Goal-Sensitive Reasoning) inference system.
 
-mod interpretation;
-mod trail;
+mod assignment;
 mod constrained;
+mod deletion;
+mod derivation;
 mod extension;
+mod factoring;
+mod interpretation;
+mod left_split;
+mod move_op;
+mod query;
 mod resolution;
 mod splitting;
-mod left_split;
-mod deletion;
-mod factoring;
-mod move_op;
-mod assignment;
-mod derivation;
-mod query;
+mod trail;
 
-pub use interpretation::InitialInterpretation;
-pub use trail::{Trail, TrailInterpretation, TrailError, PartialInterpretation};
+pub use assignment::{compute_assignments, Assignments};
 pub use constrained::ConstrainedClause;
+pub use deletion::{is_disposable, sggs_deletion};
+pub use derivation::{
+    applicable_inferences, derive, derive_with_trace, next_inference, DerivationConfig,
+    DerivationResult, DerivationState, DerivationStep, InferenceRule, Model,
+};
 pub use extension::{sggs_extension, ExtensionResult};
+pub use factoring::sggs_factoring;
+pub use interpretation::{InitialInterpretation, TruthValue};
+pub use left_split::sggs_left_split;
+pub use move_op::{sggs_move, MoveError};
+pub use query::{answer_query, answer_query_projected, ProjectionPolicy, Query, QueryResult};
 pub use resolution::{sggs_resolution, ResolutionResult};
 pub use splitting::{sggs_splitting, SplitResult};
-pub use left_split::sggs_left_split;
-pub use deletion::{sggs_deletion, is_disposable};
-pub use factoring::sggs_factoring;
-pub use move_op::{sggs_move, MoveError};
-pub use assignment::{Assignments, compute_assignments};
-pub use derivation::{derive, DerivationResult, DerivationConfig, Model, InferenceRule, next_inference};
-pub use query::{Query, QueryResult, answer_query};
+pub use trail::{PartialInterpretation, Trail, TrailError, TrailInterpretation};

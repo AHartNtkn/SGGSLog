@@ -16,9 +16,6 @@ pub enum MoveError {
 /// After conflict explanation produces an I-all-true conflict clause,
 /// we move it leftward in the trail to "flip" its selected literal
 /// from being uniformly false to being an implied literal.
-pub fn sggs_move(
-    _trail: &mut Trail,
-    _conflict_idx: usize,
-) -> Result<(), MoveError> {
+pub fn sggs_move(_trail: &mut Trail, _conflict_idx: usize) -> Result<(), MoveError> {
     todo!("sggs_move implementation")
 }

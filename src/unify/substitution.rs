@@ -1,7 +1,7 @@
 //! Substitution: mapping variables to terms.
 
-use std::collections::{HashMap, HashSet};
 use crate::syntax::{Term, Var};
+use std::collections::{HashMap, HashSet};
 
 /// A substitution mapping variables to terms.
 ///

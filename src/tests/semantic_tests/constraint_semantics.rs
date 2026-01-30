@@ -39,7 +39,10 @@ fn standardize_eliminates_identical_and_root_equals() {
     }
     walk(&std, &mut has_identical, &mut has_root_equals);
     assert!(!has_identical, "standard form should not contain Identical");
-    assert!(!has_root_equals, "standard form should not contain RootEquals");
+    assert!(
+        !has_root_equals,
+        "standard form should not contain RootEquals"
+    );
 }
 
 #[test]
@@ -119,7 +122,10 @@ fn constraint_or_is_satisfiable_when_one_branch_is() {
         Term::var("y"),
     ));
     let or = unsat.or(sat);
-    assert!(or.is_satisfiable(), "disjunction should be satisfiable if any branch is");
+    assert!(
+        or.is_satisfiable(),
+        "disjunction should be satisfiable if any branch is"
+    );
 }
 
 #[test]

@@ -268,7 +268,10 @@ mod tests {
             applied,
             Term::app(
                 "f",
-                vec![Term::constant("a"), Term::app("g", vec![Term::constant("b")])]
+                vec![
+                    Term::constant("a"),
+                    Term::app("g", vec![Term::constant("b")])
+                ]
             )
         );
     }
@@ -277,7 +280,10 @@ mod tests {
 
     #[test]
     fn test_variables_collects_all() {
-        let term = Term::app("f", vec![Term::var("X"), Term::app("g", vec![Term::var("Y")])]);
+        let term = Term::app(
+            "f",
+            vec![Term::var("X"), Term::app("g", vec![Term::var("Y")])],
+        );
         let vars = term.variables();
         assert_eq!(vars.len(), 2);
         assert!(vars.contains(&Var::new("X")));
@@ -286,11 +292,7 @@ mod tests {
 
     #[test]
     fn test_app_with_sort_construction() {
-        let term = Term::app_with_sort(
-            "f",
-            "s2",
-            vec![Term::var("X"), Term::constant("a")],
-        );
+        let term = Term::app_with_sort("f", "s2", vec![Term::var("X"), Term::constant("a")]);
         match term {
             Term::App(sym, args) => {
                 assert_eq!(sym.name, "f");

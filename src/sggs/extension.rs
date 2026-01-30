@@ -18,10 +18,7 @@ pub enum ExtensionResult {
 ///
 /// Finds a clause C in the theory where I-true literals of C unify with
 /// I-false selected literals on the trail, and generates an instance to add.
-pub fn sggs_extension(
-    _trail: &Trail,
-    _theory: &Theory,
-) -> ExtensionResult {
+pub fn sggs_extension(_trail: &Trail, _theory: &Theory) -> ExtensionResult {
     todo!("sggs_extension implementation")
 }
 
@@ -84,16 +81,15 @@ mod tests {
         trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
 
         let mut theory = Theory::new();
-        let clause = Clause::new(vec![
-            Literal::neg("P", vec![Term::var("x")]),
-        ]);
+        let clause = Clause::new(vec![Literal::neg("P", vec![Term::var("x")])]);
         theory.add_clause(clause);
 
         match sggs_extension(&trail, &theory) {
             ExtensionResult::Conflict(cc) => {
                 let got: HashSet<_> = cc.clause.literals.clone().into_iter().collect();
-                let expected: HashSet<_> =
-                    vec![Literal::neg("P", vec![Term::constant("a")])].into_iter().collect();
+                let expected: HashSet<_> = vec![Literal::neg("P", vec![Term::constant("a")])]
+                    .into_iter()
+                    .collect();
                 assert_eq!(got, expected);
             }
             other => panic!("Expected conflict extension, got {:?}", other),
@@ -116,8 +112,9 @@ mod tests {
         match sggs_extension(&trail, &theory) {
             ExtensionResult::Extended(cc) => {
                 let got: HashSet<_> = cc.clause.literals.clone().into_iter().collect();
-                let expected: HashSet<_> =
-                    vec![Literal::pos("P", vec![Term::constant("a")])].into_iter().collect();
+                let expected: HashSet<_> = vec![Literal::pos("P", vec![Term::constant("a")])]
+                    .into_iter()
+                    .collect();
                 assert_eq!(got, expected);
                 assert_eq!(
                     cc.selected_literal(),
@@ -149,6 +146,66 @@ mod tests {
                 );
             }
             other => panic!("Expected non-ground extension with n=0, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_extension_all_positive_selects_i_false_literal() {
+        // With I = all-positive, negative literals are I-false.
+        // Use a side premise with selected ¬P(a) and a clause P(x) ∨ ¬R(x).
+        let mut trail = Trail::new(InitialInterpretation::AllPositive);
+        trail.push(unit(Literal::neg("P", vec![Term::constant("a")])));
+
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::pos("P", vec![Term::var("x")]),
+            Literal::neg("R", vec![Term::var("x")]),
+        ]);
+        theory.add_clause(clause);
+
+        match sggs_extension(&trail, &theory) {
+            ExtensionResult::Extended(cc) => {
+                let got: HashSet<_> = cc.clause.literals.iter().cloned().collect();
+                let expected: HashSet<_> = vec![
+                    Literal::pos("P", vec![Term::constant("a")]),
+                    Literal::neg("R", vec![Term::constant("a")]),
+                ]
+                .into_iter()
+                .collect();
+                assert_eq!(got, expected);
+                assert_eq!(
+                    cc.selected_literal(),
+                    &Literal::neg("R", vec![Term::constant("a")])
+                );
+            }
+            other => panic!("Expected extension under I⁺, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_extension_uses_explicit_semantic_falsifier() {
+        // Explicit interpretation with a known false atom should drive semantic falsifier.
+        let mut falses = std::collections::HashSet::new();
+        falses.insert(crate::syntax::Atom::new("p", vec![Term::constant("b")]));
+        let interp = InitialInterpretation::Explicit {
+            true_atoms: std::collections::HashSet::new(),
+            false_atoms: falses,
+            default: crate::sggs::TruthValue::Unknown,
+        };
+        let trail = Trail::new(interp);
+
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![Literal::pos("p", vec![Term::var("X")])]);
+        theory.add_clause(clause);
+
+        match sggs_extension(&trail, &theory) {
+            ExtensionResult::Extended(cc) => {
+                assert_eq!(
+                    cc.selected_literal(),
+                    &Literal::pos("p", vec![Term::constant("b")])
+                );
+            }
+            other => panic!("Expected extension via semantic falsifier, got {:?}", other),
         }
     }
 }

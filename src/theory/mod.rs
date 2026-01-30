@@ -2,4 +2,4 @@
 
 mod theory;
 
-pub use theory::Theory;
+pub use theory::{RestrainingSystem, RewriteRule, Theory};

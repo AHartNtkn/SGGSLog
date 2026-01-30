@@ -215,7 +215,10 @@ mod tests {
 
     #[test]
     fn test_literal_variables_collected() {
-        let lit = Literal::pos("p", vec![Term::var("X"), Term::app("f", vec![Term::var("Y")])]);
+        let lit = Literal::pos(
+            "p",
+            vec![Term::var("X"), Term::app("f", vec![Term::var("Y")])],
+        );
         let vars = lit.variables();
         assert_eq!(vars.len(), 2);
         assert!(vars.contains(&Var::new("X")));

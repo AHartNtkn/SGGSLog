@@ -90,7 +90,10 @@ mod tests {
             Term::var("Y"),
         ));
         assert_eq!(Constraint::True.and(c.clone()).simplify(), c);
-        assert_eq!(Constraint::False.and(c.clone()).simplify(), Constraint::False);
+        assert_eq!(
+            Constraint::False.and(c.clone()).simplify(),
+            Constraint::False
+        );
         assert_eq!(Constraint::True.or(c.clone()).simplify(), Constraint::True);
         assert_eq!(Constraint::False.or(c.clone()).simplify(), c);
         assert_eq!(Constraint::True.not().simplify(), Constraint::False);

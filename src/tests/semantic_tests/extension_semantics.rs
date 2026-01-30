@@ -9,7 +9,10 @@ use super::*;
 // I-true literals of C unify with I-false selected literals on the trail."
 //
 // [BW20] Definition 1 also describes the extension rule.
-use crate::sggs::{sggs_extension, ConstrainedClause, ExtensionResult, InitialInterpretation, Trail};
+use crate::sggs::{
+    sggs_extension, ConstrainedClause, ExtensionResult, InitialInterpretation, Trail,
+};
+use crate::unify::{unify_literals, UnifyResult};
 
 #[test]
 fn extension_on_satisfiable_theory() {
@@ -92,7 +95,10 @@ fn extension_uses_simultaneous_unification_of_i_true_literals() {
                 &Literal::pos("R", vec![Term::constant("a"), Term::constant("b")])
             );
         }
-        other => panic!("Expected Extended for simultaneous unification, got {:?}", other),
+        other => panic!(
+            "Expected Extended for simultaneous unification, got {:?}",
+            other
+        ),
     }
 }
 
@@ -101,12 +107,10 @@ fn extension_inherits_constraints_from_side_premises() {
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     let constrained = ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
-        crate::constraint::Constraint::Atomic(
-            crate::constraint::AtomicConstraint::NotIdentical(
-                Term::var("x"),
-                Term::constant("a"),
-            ),
-        ),
+        crate::constraint::Constraint::Atomic(crate::constraint::AtomicConstraint::NotIdentical(
+            Term::var("x"),
+            Term::constant("a"),
+        )),
         0,
     );
     trail.push(constrained);
@@ -134,5 +138,58 @@ fn extension_inherits_constraints_from_side_premises() {
             assert!(found, "extension should inherit side-premise constraints");
         }
         other => panic!("Expected extension, got {:?}", other),
+    }
+}
+
+#[test]
+fn extension_requires_side_premises_in_disjoint_prefix() {
+    // Side premises must be in dp(Γ); a matching literal outside dp should not be used.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    // This clause is outside dp because it intersects with the first.
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::constant("b")]),
+        Literal::pos("Q", vec![Term::constant("b")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {}
+        other => panic!(
+            "Expected NoExtension when only side premise is outside dp(Γ), got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_prefers_most_general_instance_when_n0() {
+    // With no I-true literals (n=0), extension should use a most general instance.
+    let trail = Trail::new(InitialInterpretation::AllNegative);
+    let clause = Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]);
+    let theory = theory_from_clauses(vec![clause.clone()]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => {
+            let lit = cc.selected_literal();
+            let original = &clause.literals[0];
+            match unify_literals(lit, original) {
+                UnifyResult::Success(sigma) => {
+                    assert!(
+                        sigma.is_renaming(),
+                        "n=0 extension should return a clause alpha-equivalent to the premise"
+                    );
+                }
+                _ => panic!("extended literal must be an instance of the premise"),
+            }
+        }
+        other => panic!("Expected most-general extension, got {:?}", other),
     }
 }

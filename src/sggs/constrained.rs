@@ -1,8 +1,8 @@
 //! Constrained clauses for SGGS.
 
+use super::TrailInterpretation;
 use crate::constraint::Constraint;
 use crate::syntax::{Clause, Literal};
-use super::TrailInterpretation;
 
 /// A constrained clause with a selected literal.
 ///

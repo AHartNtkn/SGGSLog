@@ -73,7 +73,10 @@ mod tests {
         // In P(a), P(f(x)), P(z), the last P(z) is disposable.
         let mut trail = Trail::new(crate::sggs::InitialInterpretation::AllNegative);
         trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
-        trail.push(unit(Literal::pos("P", vec![Term::app("f", vec![Term::var("x")])])));
+        trail.push(unit(Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::var("x")])],
+        )));
         trail.push(unit(Literal::pos("P", vec![Term::var("z")])));
 
         let clause = &trail.clauses()[2];
@@ -87,7 +90,10 @@ mod tests {
         let mut trail = Trail::new(crate::sggs::InitialInterpretation::AllNegative);
         trail.push(unit(Literal::pos("P", vec![Term::var("z")])));
         trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
-        trail.push(unit(Literal::pos("P", vec![Term::app("f", vec![Term::var("x")])])));
+        trail.push(unit(Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::var("x")])],
+        )));
 
         let clause1 = &trail.clauses()[1];
         let clause2 = &trail.clauses()[2];

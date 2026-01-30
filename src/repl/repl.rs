@@ -66,13 +66,31 @@ mod tests {
     #[test]
     fn test_repl_process_line_clause_and_query() {
         let mut repl = Repl::new();
-        assert!(repl.process_line("p").is_ok());
-        assert!(repl.process_line("?- p").is_ok());
+        assert_eq!(repl.process_line("p").unwrap(), "ok");
+        assert_eq!(repl.process_line("?- p").unwrap(), "yes");
     }
 
     #[test]
     fn test_repl_process_line_directive() {
         let mut repl = Repl::new();
-        assert!(repl.process_line(":set max_steps 10").is_ok());
+        assert_eq!(
+            repl.process_line(":set max_steps 10").unwrap(),
+            "set max_steps=10"
+        );
+    }
+
+    #[test]
+    fn test_repl_process_line_parse_error() {
+        let mut repl = Repl::new();
+        let err = repl.process_line("p ∧").expect_err("expected parse error");
+        assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn test_repl_query_no_and_answers() {
+        let mut repl = Repl::new();
+        assert_eq!(repl.process_line("(p a)").unwrap(), "ok");
+        assert_eq!(repl.process_line("?- (p b)").unwrap(), "no");
+        assert_eq!(repl.process_line("?- (p X)").unwrap(), "answers: {X=a}");
     }
 }

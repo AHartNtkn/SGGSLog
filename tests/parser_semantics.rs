@@ -101,22 +101,20 @@ fn test_sorted_identifiers_in_terms() {
             assert_eq!(v.name(), "X");
             assert_eq!(v.sort(), Some("s1"));
             match *body {
-                Formula::Atom(atom) => {
-                    match &atom.args[0] {
-                        Term::App(sym, args) => {
-                            assert_eq!(sym.result_sort.as_deref(), Some("s2"));
-                            assert_eq!(args.len(), 1);
-                            match &args[0] {
-                                Term::Var(v) => {
-                                    assert_eq!(v.name(), "X");
-                                    assert_eq!(v.sort(), Some("s1"));
-                                }
-                                _ => panic!("expected sorted variable"),
+                Formula::Atom(atom) => match &atom.args[0] {
+                    Term::App(sym, args) => {
+                        assert_eq!(sym.result_sort.as_deref(), Some("s2"));
+                        assert_eq!(args.len(), 1);
+                        match &args[0] {
+                            Term::Var(v) => {
+                                assert_eq!(v.name(), "X");
+                                assert_eq!(v.sort(), Some("s1"));
                             }
+                            _ => panic!("expected sorted variable"),
                         }
-                        _ => panic!("expected function application"),
                     }
-                }
+                    _ => panic!("expected function application"),
+                },
                 _ => panic!("expected atom"),
             }
         }
@@ -149,8 +147,7 @@ q
 
 #[test]
 fn test_directive_parsing_load_and_set() {
-    let stmts = parse_file(":load \"file.sggs\"\n:set max_steps 10")
-        .expect("parse_file failed");
+    let stmts = parse_file(":load \"file.sggs\"\n:set max_steps 10").expect("parse_file failed");
     assert_eq!(stmts.len(), 2);
     assert_eq!(
         stmts[0],

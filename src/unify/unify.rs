@@ -1,7 +1,7 @@
 //! Unification algorithm: Robinson's algorithm for computing MGU.
 
-use crate::syntax::{Term, Var, Literal};
 use super::Substitution;
+use crate::syntax::{Literal, Term, Var};
 
 /// Result of a unification attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +30,11 @@ pub enum UnifyError {
     /// Function symbols don't match.
     SymbolClash { expected: String, found: String },
     /// Arity mismatch for function application.
-    ArityMismatch { symbol: String, expected: usize, found: usize },
+    ArityMismatch {
+        symbol: String,
+        expected: usize,
+        found: usize,
+    },
 }
 
 /// Compute the most general unifier of two terms.

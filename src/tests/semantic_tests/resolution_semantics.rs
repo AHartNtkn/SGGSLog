@@ -10,7 +10,9 @@ use super::*;
 //
 // Reference: [BP17] Section 5 - Conflict Explanation
 // "Resolution is used to explain conflicts and derive lemmas."
-use crate::sggs::{sggs_resolution, ConstrainedClause, InitialInterpretation, ResolutionResult, Trail};
+use crate::sggs::{
+    sggs_resolution, ConstrainedClause, InitialInterpretation, ResolutionResult, Trail,
+};
 
 #[test]
 fn resolution_preserves_conflict() {

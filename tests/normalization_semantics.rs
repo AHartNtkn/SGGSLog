@@ -1,6 +1,6 @@
 use sggslog::normalize::{clausify_formula, clausify_statements};
 use sggslog::parser::{parse_file, Statement};
-use sggslog::syntax::{Clause, Literal, Term};
+use sggslog::syntax::{Clause, Formula, Literal, Term};
 use std::collections::HashMap;
 
 fn single_formula(src: &str) -> sggslog::syntax::Formula {
@@ -31,7 +31,11 @@ fn eval_literal(lit: &Literal, env: &HashMap<String, bool>) -> bool {
     let val = *env
         .get(lit.atom.predicate.as_str())
         .expect("missing variable assignment");
-    if lit.positive { val } else { !val }
+    if lit.positive {
+        val
+    } else {
+        !val
+    }
 }
 
 fn eval_clause(clause: &Clause, env: &HashMap<String, bool>) -> bool {
@@ -40,6 +44,89 @@ fn eval_clause(clause: &Clause, env: &HashMap<String, bool>) -> bool {
 
 fn eval_cnf(clauses: &[Clause], env: &HashMap<String, bool>) -> bool {
     clauses.iter().all(|c| eval_clause(c, env))
+}
+
+fn eval_formula(formula: &Formula, env: &HashMap<String, bool>) -> bool {
+    match formula {
+        Formula::Atom(atom) => {
+            if !atom.args.is_empty() {
+                panic!("propositional evaluator only supports zero-ary predicates");
+            }
+            *env.get(atom.predicate.as_str())
+                .expect("missing variable assignment")
+        }
+        Formula::Not(inner) => !eval_formula(inner, env),
+        Formula::And(left, right) => eval_formula(left, env) && eval_formula(right, env),
+        Formula::Or(left, right) => eval_formula(left, env) || eval_formula(right, env),
+        Formula::Implies(left, right) => !eval_formula(left, env) || eval_formula(right, env),
+        Formula::Forall(_, _) | Formula::Exists(_, _) => {
+            panic!("propositional evaluator does not support quantifiers");
+        }
+    }
+}
+
+fn collect_formula_preds(formula: &Formula, acc: &mut std::collections::HashSet<String>) {
+    match formula {
+        Formula::Atom(atom) => {
+            if !atom.args.is_empty() {
+                panic!("propositional collector only supports zero-ary predicates");
+            }
+            acc.insert(atom.predicate.clone());
+        }
+        Formula::Not(inner) => collect_formula_preds(inner, acc),
+        Formula::And(left, right) | Formula::Or(left, right) | Formula::Implies(left, right) => {
+            collect_formula_preds(left, acc);
+            collect_formula_preds(right, acc);
+        }
+        Formula::Forall(_, body) | Formula::Exists(_, body) => {
+            collect_formula_preds(body, acc);
+        }
+    }
+}
+
+fn collect_cnf_preds(clauses: &[Clause]) -> std::collections::HashSet<String> {
+    let mut preds = std::collections::HashSet::new();
+    for c in clauses {
+        for l in &c.literals {
+            if !l.atom.args.is_empty() {
+                panic!("propositional collector only supports zero-ary predicates");
+            }
+            preds.insert(l.atom.predicate.clone());
+        }
+    }
+    preds
+}
+
+fn assert_conservative_extension(src: &str) {
+    let formula = single_formula(src);
+    let clauses = clausify_formula(&formula).expect("clausify_formula failed");
+
+    let mut orig_preds = std::collections::HashSet::new();
+    collect_formula_preds(&formula, &mut orig_preds);
+    let cnf_preds = collect_cnf_preds(&clauses);
+    let new_preds: Vec<String> = cnf_preds.difference(&orig_preds).cloned().collect();
+
+    let orig_vars: Vec<String> = orig_preds.into_iter().collect();
+    let new_vars: Vec<String> = new_preds;
+
+    for env_orig in all_assignments(&orig_vars.iter().map(|s| s.as_str()).collect::<Vec<_>>()) {
+        let original = eval_formula(&formula, &env_orig);
+        let mut exists_ext = false;
+        for env_new in all_assignments(&new_vars.iter().map(|s| s.as_str()).collect::<Vec<_>>()) {
+            let mut env_full = env_orig.clone();
+            for (k, v) in env_new {
+                env_full.insert(k, v);
+            }
+            if eval_cnf(&clauses, &env_full) {
+                exists_ext = true;
+                break;
+            }
+        }
+        assert_eq!(
+            original, exists_ext,
+            "CNF must be a conservative extension over the original symbols"
+        );
+    }
 }
 
 fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
@@ -59,47 +146,61 @@ fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
 fn test_implication_to_clause() {
     // Standard pipeline: eliminate implication and drop universals.
     let clause = clausify_single("∀X ((p X) -> (q X))");
-    let got: std::collections::HashSet<_> = clause.literals.into_iter().collect();
-    let expected: std::collections::HashSet<_> = vec![
-        Literal::neg("p", vec![Term::var("X")]),
-        Literal::pos("q", vec![Term::var("X")]),
-    ]
-    .into_iter()
-    .collect();
-    assert_eq!(got, expected);
+    assert_eq!(clause.literals.len(), 2);
+    let mut var_term: Option<Term> = None;
+    for lit in &clause.literals {
+        match (
+            lit.positive,
+            lit.atom.predicate.as_str(),
+            lit.atom.args.as_slice(),
+        ) {
+            (false, "p", [t]) | (true, "q", [t]) => {
+                if let Some(prev) = &var_term {
+                    assert_eq!(prev, t, "same variable should be shared across literals");
+                } else {
+                    var_term = Some(t.clone());
+                }
+            }
+            _ => panic!("expected literals p(X) and q(X) with shared variable"),
+        }
+    }
 }
 
 #[test]
 fn test_distribution_to_cnf() {
-    // P ∨ (Q ∧ R) ≡ (P ∨ Q) ∧ (P ∨ R) (semantic equivalence).
-    let clauses = clausify_src("p ∨ (q ∧ r)");
-    for env in all_assignments(&["p", "q", "r"]) {
-        let original = env["p"] || (env["q"] && env["r"]);
-        let cnf = eval_cnf(&clauses, &env);
-        assert_eq!(original, cnf, "CNF must be semantically equivalent");
-    }
+    // P ∨ (Q ∧ R) should be a conservative extension of the original vocabulary.
+    assert_conservative_extension("p ∨ (q ∧ r)");
 }
 
 #[test]
 fn test_operator_precedence_and_distribution() {
     // ∧ should bind tighter than ∨: p ∨ q ∧ r == p ∨ (q ∧ r)
-    let clauses = clausify_src("p ∨ q ∧ r");
-    for env in all_assignments(&["p", "q", "r"]) {
-        let original = env["p"] || (env["q"] && env["r"]);
-        let cnf = eval_cnf(&clauses, &env);
-        assert_eq!(original, cnf, "CNF must be semantically equivalent");
-    }
+    assert_conservative_extension("p ∨ q ∧ r");
+}
+
+#[test]
+fn test_conjunction_produces_multiple_clauses() {
+    // p ∧ q should produce two separate clauses.
+    let clauses = clausify_src("p ∧ q");
+    assert_eq!(clauses.len(), 2);
+}
+
+#[test]
+fn test_demorgan_conservative_extension() {
+    // ¬(p ∨ q) should be a conservative extension over the original vocabulary.
+    assert_conservative_extension("¬(p ∨ q)");
+}
+
+#[test]
+fn test_double_negation_conservative_extension() {
+    // ¬¬p should be equivalent to p.
+    assert_conservative_extension("¬¬p");
 }
 
 #[test]
 fn test_nested_distribution_four_clauses() {
-    // (p ∧ q) ∨ (r ∧ s) semantic equivalence with produced CNF.
-    let clauses = clausify_src("(p ∧ q) ∨ (r ∧ s)");
-    for env in all_assignments(&["p", "q", "r", "s"]) {
-        let original = (env["p"] && env["q"]) || (env["r"] && env["s"]);
-        let cnf = eval_cnf(&clauses, &env);
-        assert_eq!(original, cnf, "CNF must be semantically equivalent");
-    }
+    // (p ∧ q) ∨ (r ∧ s) should be a conservative extension of the original vocabulary.
+    assert_conservative_extension("(p ∧ q) ∨ (r ∧ s)");
 }
 
 #[test]
@@ -119,15 +220,48 @@ fn test_exists_skolemizes_to_constant() {
 }
 
 #[test]
+fn test_exists_skolem_constant_preserves_sort() {
+    let clause = clausify_single("∃X:s1 (p X)");
+    let lit = &clause.literals[0];
+    match &lit.atom.args[0] {
+        Term::Const(c) => {
+            assert_eq!(c.sort(), Some("s1"));
+        }
+        Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {
+            assert_eq!(sym.result_sort.as_deref(), Some("s1"));
+        }
+        _ => panic!("expected sorted Skolem constant"),
+    }
+}
+
+#[test]
 fn test_forall_exists_skolemizes_to_function() {
     let clause = clausify_single("∀X ∃Y (p X Y)");
     assert_eq!(clause.literals.len(), 1);
     let lit = &clause.literals[0];
     assert_eq!(lit.atom.args.len(), 2);
+    let x = lit.atom.args[0].clone();
     match &lit.atom.args[1] {
         Term::App(sym, args) => {
             assert_eq!(sym.arity, 1);
-            assert_eq!(args[0], Term::var("X"));
+            assert_eq!(args[0], x);
+        }
+        _ => panic!("expected Skolem function application"),
+    }
+}
+
+#[test]
+fn test_forall_exists_skolem_function_preserves_sort() {
+    let clause = clausify_single("∀X:s1 ∃Y:s2 (p X Y)");
+    let lit = &clause.literals[0];
+    match &lit.atom.args[1] {
+        Term::App(sym, args) => {
+            assert_eq!(sym.result_sort.as_deref(), Some("s2"));
+            assert_eq!(args.len(), 1);
+            match &args[0] {
+                Term::Var(v) => assert_eq!(v.sort(), Some("s1")),
+                _ => panic!("expected sorted argument"),
+            }
         }
         _ => panic!("expected Skolem function application"),
     }
@@ -139,14 +273,17 @@ fn test_multiple_exists_skolem_functions_distinct() {
     assert_eq!(clause.literals.len(), 1);
     let lit = &clause.literals[0];
     assert_eq!(lit.atom.args.len(), 3);
-    let x = Term::var("X");
+    let x = lit.atom.args[0].clone();
     match (&lit.atom.args[1], &lit.atom.args[2]) {
         (Term::App(fy, fy_args), Term::App(fz, fz_args)) => {
             assert_eq!(fy_args.len(), 1);
             assert_eq!(fz_args.len(), 1);
             assert_eq!(fy_args[0], x);
             assert_eq!(fz_args[0], x);
-            assert_ne!(fy.name, fz.name, "distinct existentials require distinct Skolem symbols");
+            assert_ne!(
+                fy.name, fz.name,
+                "distinct existentials require distinct Skolem symbols"
+            );
         }
         _ => panic!("expected Skolem function applications for Y and Z"),
     }
@@ -159,8 +296,8 @@ fn test_skolem_depends_on_in_scope_universals() {
     assert_eq!(clause.literals.len(), 1);
     let lit = &clause.literals[0];
     assert_eq!(lit.atom.args.len(), 4);
-    let x = Term::var("X");
-    let z = Term::var("Z");
+    let x = lit.atom.args[0].clone();
+    let z = lit.atom.args[2].clone();
     match (&lit.atom.args[1], &lit.atom.args[3]) {
         (Term::App(fy, fy_args), Term::App(fw, fw_args)) => {
             assert_eq!(fy_args.len(), 1);
@@ -185,7 +322,10 @@ fn test_exists_before_forall_skolem_constant() {
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {}
         _ => panic!("expected Skolem constant for X"),
     }
-    assert_eq!(lit.atom.args[1], Term::var("Y"));
+    match &lit.atom.args[1] {
+        Term::Var(_) => {}
+        _ => panic!("expected universal variable for Y"),
+    }
 }
 
 #[test]
@@ -203,5 +343,8 @@ fn test_skolem_symbols_fresh_across_clauses() {
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
         _ => panic!("expected Skolem constant in second clause"),
     };
-    assert_ne!(sk1, sk2, "distinct existentials require distinct Skolem symbols");
+    assert_ne!(
+        sk1, sk2,
+        "distinct existentials require distinct Skolem symbols"
+    );
 }

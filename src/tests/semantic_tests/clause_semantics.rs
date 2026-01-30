@@ -72,7 +72,10 @@ fn horn_clause_boundary() {
 fn variables_collects_from_all_literals() {
     let clause = Clause::new(vec![
         Literal::pos("p", vec![Term::var("X"), Term::var("Y")]),
-        Literal::neg("q", vec![Term::var("Z"), Term::app("f", vec![Term::var("W")])]),
+        Literal::neg(
+            "q",
+            vec![Term::var("Z"), Term::app("f", vec![Term::var("W")])],
+        ),
     ]);
     let vars = clause.variables();
     assert_eq!(vars.len(), 4, "Should collect X, Y, Z, W");

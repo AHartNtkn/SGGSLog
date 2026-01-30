@@ -56,14 +56,29 @@ mod tests {
     #[test]
     fn test_kernel_execute_clause_and_query() {
         let mut k = Kernel::new();
-        assert!(k.execute("p").is_ok());
-        assert!(k.execute("?- p").is_ok());
+        assert_eq!(k.execute("p").unwrap(), "ok");
+        assert_eq!(k.execute("?- p").unwrap(), "yes");
     }
 
     #[test]
     fn test_kernel_execute_multiple_lines() {
         let mut k = Kernel::new();
         let code = "p\nq\n?- p";
-        assert!(k.execute(code).is_ok());
+        assert_eq!(k.execute(code).unwrap(), "yes");
+    }
+
+    #[test]
+    fn test_kernel_execute_parse_error() {
+        let mut k = Kernel::new();
+        let err = k.execute("p ∧").expect_err("expected parse error");
+        assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn test_kernel_execute_answers_and_no() {
+        let mut k = Kernel::new();
+        assert_eq!(k.execute("(p a)").unwrap(), "ok");
+        assert_eq!(k.execute("?- (p b)").unwrap(), "no");
+        assert_eq!(k.execute("?- (p X)").unwrap(), "answers: {X=a}");
     }
 }

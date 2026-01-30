@@ -13,10 +13,6 @@ use crate::sggs::{
     InitialInterpretation, ResolutionResult, Trail,
 };
 
-fn unit(lit: Literal) -> ConstrainedClause {
-    ConstrainedClause::with_constraint(Clause::new(vec![lit]), Constraint::True, 0)
-}
-
 #[test]
 fn conflict_solving_chain_reaches_empty_clause() {
     // Theory: P(a), ¬P(x) ∨ Q(x), ¬Q(a)

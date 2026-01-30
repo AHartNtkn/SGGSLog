@@ -17,10 +17,7 @@ pub enum ResolutionResult {
 ///
 /// When a conflict clause has I-false literals, we resolve them away
 /// using justifications from the trail's disjoint prefix.
-pub fn sggs_resolution(
-    _conflict: &ConstrainedClause,
-    _trail: &Trail,
-) -> ResolutionResult {
+pub fn sggs_resolution(_conflict: &ConstrainedClause, _trail: &Trail) -> ResolutionResult {
     todo!("sggs_resolution implementation")
 }
 

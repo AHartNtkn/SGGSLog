@@ -7,13 +7,10 @@ use super::*;
 // Reference: [BP16a] Definitions 13-15 (partition and splitting)
 use crate::constraint::{AtomicConstraint, Constraint};
 use crate::sggs::ConstrainedClause;
+use crate::sggs::{sggs_deletion, InitialInterpretation, Trail};
 use crate::unify::{unify_literals, Substitution};
 
-fn combined_constraint(
-    left: &Constraint,
-    right: &Constraint,
-    subst: &Substitution,
-) -> Constraint {
+fn combined_constraint(left: &Constraint, right: &Constraint, subst: &Substitution) -> Constraint {
     let mut acc = Constraint::True;
     for v in subst.domain() {
         if let Some(t) = subst.lookup(v) {
@@ -123,7 +120,10 @@ fn splitting_propagates_constraints_for_intersection() {
         }
     }
     assert_eq!(intersects, 1, "exactly one split part should allow x = a");
-    assert!(disjoint >= 1, "at least one split part should exclude x = a");
+    assert!(
+        disjoint >= 1,
+        "at least one split part should exclude x = a"
+    );
 }
 
 #[test]
@@ -145,12 +145,18 @@ fn splitting_returns_none_for_disjoint_literals() {
 #[test]
 fn splitting_representative_matches_intersection() {
     let clause = ConstrainedClause::with_constraint(
-        Clause::new(vec![Literal::pos("P", vec![Term::var("x"), Term::var("y")])]),
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::var("x"), Term::var("y")],
+        )]),
         Constraint::True,
         0,
     );
     let other = ConstrainedClause::with_constraint(
-        Clause::new(vec![Literal::pos("P", vec![Term::constant("a"), Term::var("y")])]),
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::constant("a"), Term::var("y")],
+        )]),
         Constraint::True,
         0,
     );
@@ -195,7 +201,10 @@ fn splitting_has_no_missing_instances_symbolically() {
     let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
     fn apply_subst_term(subst: &Substitution, term: &Term) -> Term {
         match term {
-            Term::Var(v) => subst.lookup(v).cloned().unwrap_or_else(|| Term::Var(v.clone())),
+            Term::Var(v) => subst
+                .lookup(v)
+                .cloned()
+                .unwrap_or_else(|| Term::Var(v.clone())),
             Term::Const(_) => term.clone(),
             Term::App(sym, args) => {
                 let new_args = args.iter().map(|t| apply_subst_term(subst, t)).collect();
@@ -209,18 +218,18 @@ fn splitting_has_no_missing_instances_symbolically() {
             Constraint::True => Constraint::True,
             Constraint::False => Constraint::False,
             Constraint::Atomic(a) => match a {
-                AtomicConstraint::Identical(t1, t2) => Constraint::Atomic(
-                    AtomicConstraint::Identical(
+                AtomicConstraint::Identical(t1, t2) => {
+                    Constraint::Atomic(AtomicConstraint::Identical(
                         apply_subst_term(subst, t1),
                         apply_subst_term(subst, t2),
-                    ),
-                ),
-                AtomicConstraint::NotIdentical(t1, t2) => Constraint::Atomic(
-                    AtomicConstraint::NotIdentical(
+                    ))
+                }
+                AtomicConstraint::NotIdentical(t1, t2) => {
+                    Constraint::Atomic(AtomicConstraint::NotIdentical(
                         apply_subst_term(subst, t1),
                         apply_subst_term(subst, t2),
-                    ),
-                ),
+                    ))
+                }
                 AtomicConstraint::RootEquals(t, f) => Constraint::Atomic(
                     AtomicConstraint::RootEquals(apply_subst_term(subst, t), f.clone()),
                 ),
@@ -275,5 +284,88 @@ fn splitting_trivial_returns_none() {
     assert!(
         crate::sggs::sggs_splitting(&clause, &other).is_none(),
         "Trivial splitting should be rejected"
+    );
+}
+
+#[test]
+fn s_split_representative_removed_by_deletion() {
+    // Same-sign intersection should be eliminated by splitting + deletion (s-split).
+    let earlier = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![
+                Term::app("f", vec![Term::var("w")]),
+                Term::app("g", vec![Term::var("z")]),
+            ],
+        )]),
+        Constraint::True,
+        0,
+    );
+    let later = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::var("x"), Term::var("y")],
+        )]),
+        Constraint::True,
+        0,
+    );
+
+    let split = crate::sggs::sggs_splitting(&later, &earlier).expect("expected split result");
+    assert!(
+        split.parts.iter().any(|p| intersects(p, &earlier)),
+        "split must include a representative intersecting the earlier clause"
+    );
+
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(earlier);
+    for part in split.parts {
+        trail.push(part);
+    }
+
+    sggs_deletion(&mut trail);
+    let head = &trail.clauses()[0];
+    let still_intersects = trail.clauses().iter().skip(1).any(|c| intersects(c, head));
+    assert!(
+        !still_intersects,
+        "s-split representative should be removed by deletion"
+    );
+}
+
+#[test]
+fn d_split_representative_survives_deletion() {
+    // Opposite-sign intersection should not be removed by deletion (d-split scenario).
+    let earlier = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![
+                Term::app("f", vec![Term::var("w")]),
+                Term::app("g", vec![Term::var("z")]),
+            ],
+        )]),
+        Constraint::True,
+        0,
+    );
+    let later = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::neg(
+            "P",
+            vec![Term::var("x"), Term::var("y")],
+        )]),
+        Constraint::True,
+        0,
+    );
+
+    let split = crate::sggs::sggs_splitting(&later, &earlier).expect("expected split result");
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(earlier);
+    for part in split.parts {
+        trail.push(part);
+    }
+
+    sggs_deletion(&mut trail);
+    let head = &trail.clauses()[0];
+    let still_intersects = trail.clauses().iter().skip(1).any(|c| intersects(c, head));
+    assert!(
+        still_intersects,
+        "d-split representative should survive deletion"
     );
 }

@@ -74,7 +74,10 @@ mod tests {
         );
 
         let result = sggs_splitting(&clause, &other).expect("expected splitting");
-        assert!(result.parts.len() >= 2, "splitting should produce a non-trivial partition");
+        assert!(
+            result.parts.len() >= 2,
+            "splitting should produce a non-trivial partition"
+        );
 
         // Exactly one part should intersect the other clause.
         let intersection_count = result

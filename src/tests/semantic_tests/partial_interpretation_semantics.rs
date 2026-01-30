@@ -11,10 +11,6 @@ use super::*;
 use crate::constraint::{AtomicConstraint, Constraint};
 use crate::sggs::{ConstrainedClause, InitialInterpretation, Trail};
 
-fn unit(lit: Literal) -> ConstrainedClause {
-    ConstrainedClause::with_constraint(Clause::new(vec![lit]), Constraint::True, 0)
-}
-
 #[test]
 fn partial_interpretation_respects_constraints() {
     // pcgi should include only instances satisfying the clause constraint.
@@ -107,14 +103,8 @@ fn proper_vs_complementary_instances_unit_clause() {
     )));
 
     // For clause index 2 (0-based), ¬P(a,a) is complementary, ¬P(c,c) is proper.
-    let neg_p_aa = Literal::neg(
-        "P",
-        vec![Term::constant("a"), Term::constant("a")],
-    );
-    let neg_p_cc = Literal::neg(
-        "P",
-        vec![Term::constant("c"), Term::constant("c")],
-    );
+    let neg_p_aa = Literal::neg("P", vec![Term::constant("a"), Term::constant("a")]);
+    let neg_p_cc = Literal::neg("P", vec![Term::constant("c"), Term::constant("c")]);
 
     assert!(trail.is_complementary_selected_instance(2, &neg_p_aa));
     assert!(!trail.is_proper_selected_instance(2, &neg_p_aa));

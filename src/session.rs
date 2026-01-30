@@ -1,9 +1,11 @@
 //! Session: end-to-end API for loading theories and answering queries.
 
-use crate::parser::{parse_file, Statement, Directive};
 use crate::normalize::{clausify_statement, clausify_statements};
-use crate::sggs::{answer_query, DerivationConfig, Query, QueryResult};
-use crate::syntax::Literal;
+use crate::parser::{parse_file, Directive, Statement};
+use crate::sggs::{
+    answer_query, answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult,
+};
+use crate::syntax::{Literal, Signature};
 use crate::theory::Theory;
 
 /// Result of executing a statement.
@@ -39,6 +41,8 @@ impl std::error::Error for SessionError {}
 pub struct Session {
     theory: Theory,
     config: DerivationConfig,
+    user_signature: Signature,
+    projection_policy: ProjectionPolicy,
 }
 
 impl Session {
@@ -68,12 +72,19 @@ impl Session {
     }
 
     /// Apply a directive.
-    pub fn apply_directive(&mut self, _directive: Directive) -> Result<DirectiveResult, SessionError> {
+    pub fn apply_directive(
+        &mut self,
+        _directive: Directive,
+    ) -> Result<DirectiveResult, SessionError> {
         todo!("Session::apply_directive implementation")
     }
 
     /// Update the configuration from a key/value pair.
-    pub fn set_option(&mut self, _key: &str, _value: &str) -> Result<DirectiveResult, SessionError> {
+    pub fn set_option(
+        &mut self,
+        _key: &str,
+        _value: &str,
+    ) -> Result<DirectiveResult, SessionError> {
         todo!("Session::set_option implementation")
     }
 
@@ -85,6 +96,16 @@ impl Session {
     /// Access the current configuration.
     pub fn config(&self) -> &DerivationConfig {
         &self.config
+    }
+
+    /// Signature of user-provided symbols (pre-normalization).
+    pub fn user_signature(&self) -> &Signature {
+        &self.user_signature
+    }
+
+    /// Projection policy for user-visible answers.
+    pub fn projection_policy(&self) -> ProjectionPolicy {
+        self.projection_policy
     }
 }
 

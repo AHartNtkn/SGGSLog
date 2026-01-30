@@ -1,8 +1,8 @@
 //! Theory: a set of clauses.
 
-use crate::syntax::Clause;
-use crate::parser::Statement;
 use crate::normalize::clausify_statement;
+use crate::parser::Statement;
+use crate::syntax::{Atom, Clause, Signature};
 
 /// A theory is a set of clauses.
 #[derive(Debug, Clone, Default)]
@@ -14,6 +14,20 @@ pub struct Theory {
 #[derive(Debug, Clone)]
 pub struct ConversionError {
     pub message: String,
+}
+
+/// A rewrite rule for restraining systems (L -> M on atoms).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RewriteRule {
+    pub lhs: crate::syntax::Atom,
+    pub rhs: crate::syntax::Atom,
+}
+
+/// A restraining system (RS, ES) as in SGGSdpFOL.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RestrainingSystem {
+    pub rs: Vec<RewriteRule>,
+    pub es: Vec<RewriteRule>,
 }
 
 impl Theory {
@@ -35,6 +49,15 @@ impl Theory {
     /// Get the clauses in this theory.
     pub fn clauses(&self) -> &[Clause] {
         &self.clauses
+    }
+
+    /// Compute the signature of this theory.
+    pub fn signature(&self) -> Signature {
+        let mut sig = Signature::empty();
+        for clause in &self.clauses {
+            sig.extend(&Signature::from_clause(clause));
+        }
+        sig
     }
 
     /// Check if every clause is ground-preserving.
@@ -64,11 +87,10 @@ impl Theory {
     }
 
     /// Check if every clause is sort-refined PVD for the given set of infinite sorts.
-    pub fn is_sort_refined_pvd(
-        &self,
-        infinite_sorts: &std::collections::HashSet<String>,
-    ) -> bool {
-        self.clauses.iter().all(|c| c.is_sort_refined_pvd(infinite_sorts))
+    pub fn is_sort_refined_pvd(&self, infinite_sorts: &std::collections::HashSet<String>) -> bool {
+        self.clauses
+            .iter()
+            .all(|c| c.is_sort_refined_pvd(infinite_sorts))
     }
 
     /// Check if this theory is in EPR (no function symbols of arity > 0).
@@ -101,8 +123,8 @@ impl Theory {
 
     /// Check if this theory is stratified.
     pub fn is_stratified(&self) -> bool {
-        use std::collections::{HashMap, HashSet};
         use crate::syntax::Term;
+        use std::collections::{HashMap, HashSet};
 
         fn term_sort(term: &Term) -> Option<&str> {
             match term {
@@ -210,12 +232,22 @@ impl Theory {
         }
         true
     }
+
+    /// Check whether a restraining system is valid for this theory.
+    pub fn is_restraining_system(&self, _system: &RestrainingSystem) -> bool {
+        todo!("Theory::is_restraining_system implementation")
+    }
+
+    /// Compute the atom basis for this theory under a restraining system.
+    pub fn basis(&self, _system: &RestrainingSystem) -> std::collections::HashSet<Atom> {
+        todo!("Theory::basis implementation")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::syntax::{Clause, Literal, Term, Var};
+    use crate::syntax::{Atom, Clause, Literal, Term, Var};
 
     #[test]
     fn test_stratified_signature_acyclic() {
@@ -272,5 +304,147 @@ mod tests {
         let mut theory = Theory::new();
         theory.add_clause(clause);
         assert!(!theory.is_stratified());
+    }
+
+    #[test]
+    fn test_signature_collects_predicates_and_symbols() {
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::constant("a")])],
+        )]));
+        let sig = theory.signature();
+        assert!(sig.predicates.contains("P"));
+        assert!(sig.functions.contains("f"));
+        assert!(sig.constants.contains("a"));
+    }
+
+    #[test]
+    fn test_basis_for_ground_theory_is_self() {
+        let mut theory = Theory::new();
+        let c1 = Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
+        let c2 = Clause::new(vec![Literal::neg("q", vec![Term::constant("b")])]);
+        theory.add_clause(c1.clone());
+        theory.add_clause(c2.clone());
+        let system = RestrainingSystem::default();
+        let basis = theory.basis(&system);
+        assert!(basis.contains(&Atom::new("p", vec![Term::constant("a")])));
+        assert!(basis.contains(&Atom::new("q", vec![Term::constant("b")])));
+        assert_eq!(basis.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_system_restrains_ground_theory() {
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("a")],
+        )]));
+        let system = RestrainingSystem::default();
+        assert!(theory.is_restraining_system(&system));
+    }
+
+    #[test]
+    fn test_restraining_system_requires_rule_for_non_ground_positive() {
+        // Source: SGGSdpFOL Definition 15 (Restraining system):
+        // for every non-ground L in C+, there exists ¬M in C- with (M -> L) in RS or (M ~ L) in ES.
+        // Clause: ¬P(f(x)) ∨ P(x). Positive literal P(x) is non-ground.
+        // System is restraining if it contains rule P(f(x)) -> P(x).
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::app("f", vec![Term::var("x")])]),
+            Literal::pos("P", vec![Term::var("x")]),
+        ]);
+        theory.add_clause(clause);
+
+        let mut system = RestrainingSystem::default();
+        system.rs.push(RewriteRule {
+            lhs: Atom::new("P", vec![Term::app("f", vec![Term::var("x")])]),
+            rhs: Atom::new("P", vec![Term::var("x")]),
+        });
+
+        assert!(theory.is_restraining_system(&system));
+    }
+
+    #[test]
+    fn test_restraining_system_fails_without_rule() {
+        // Source: SGGSdpFOL Definition 15 (Restraining system).
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::app("f", vec![Term::var("x")])]),
+            Literal::pos("P", vec![Term::var("x")]),
+        ]);
+        theory.add_clause(clause);
+        let system = RestrainingSystem::default();
+        assert!(!theory.is_restraining_system(&system));
+    }
+
+    #[test]
+    fn test_restraining_system_accepts_equation() {
+        // Source: SGGSdpFOL Definition 15 (Restraining system), equations in ES.
+        // Clause: ¬P(y,x) ∨ P(x,y). Equation P(x,y) ~ P(y,x) suffices.
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::var("y"), Term::var("x")]),
+            Literal::pos("P", vec![Term::var("x"), Term::var("y")]),
+        ]);
+        theory.add_clause(clause);
+
+        let mut system = RestrainingSystem::default();
+        system.es.push(RewriteRule {
+            lhs: Atom::new("P", vec![Term::var("x"), Term::var("y")]),
+            rhs: Atom::new("P", vec![Term::var("y"), Term::var("x")]),
+        });
+        assert!(theory.is_restraining_system(&system));
+    }
+
+    #[test]
+    fn test_restraining_system_matches_alpha_equivalent_rule() {
+        // Source: SGGSdpFOL Definition 15 (Restraining system), rules up to renaming.
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::app("f", vec![Term::var("y")])]),
+            Literal::pos("P", vec![Term::var("y")]),
+        ]);
+        theory.add_clause(clause);
+
+        let mut system = RestrainingSystem::default();
+        system.rs.push(RewriteRule {
+            lhs: Atom::new("P", vec![Term::app("f", vec![Term::var("x")])]),
+            rhs: Atom::new("P", vec![Term::var("x")]),
+        });
+        assert!(
+            theory.is_restraining_system(&system),
+            "rule should match modulo variable renaming"
+        );
+    }
+
+    #[test]
+    fn test_basis_respects_rewrite_closure() {
+        // Source: SGGSdpFOL Definition 7 (Basis for a restrained set).
+        // If P(f(a)) occurs and RS has P(f(x)) -> P(x), basis includes P(a) and P(f(a)).
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::constant("a")])],
+        )]));
+        let mut system = RestrainingSystem::default();
+        system.rs.push(RewriteRule {
+            lhs: Atom::new("P", vec![Term::app("f", vec![Term::var("x")])]),
+            rhs: Atom::new("P", vec![Term::var("x")]),
+        });
+        let basis = theory.basis(&system);
+        assert!(basis.contains(&Atom::new(
+            "P",
+            vec![Term::app("f", vec![Term::constant("a")])]
+        )));
+        assert!(basis.contains(&Atom::new("P", vec![Term::constant("a")])));
+        assert!(!basis.contains(&Atom::new(
+            "P",
+            vec![Term::app(
+                "f",
+                vec![Term::app("f", vec![Term::constant("a")])]
+            )]
+        )));
     }
 }

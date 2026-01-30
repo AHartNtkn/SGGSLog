@@ -44,6 +44,18 @@ fn sggs_move_rejects_non_conflict_clause() {
 }
 
 #[test]
+fn sggs_move_rejects_conflict_without_assignment() {
+    // A conflict clause with no assignment should not be movable.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    let result = sggs_move(&mut trail, 0);
+    assert!(matches!(result, Err(MoveError::NoValidPosition)));
+}
+
+#[test]
 fn sggs_move_moves_before_rightmost_assignment() {
     // Source: paper6.pdf, assignment rule: selected I-true literal is assigned rightmost.
     // Move should relocate the conflict clause just before its rightmost justification.

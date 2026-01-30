@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::syntax::Literal;
 use super::Trail;
+use crate::syntax::Literal;
 
 /// Assignment mapping from (clause index, literal index) to justifying clause index.
 #[derive(Debug, Clone, Default)]

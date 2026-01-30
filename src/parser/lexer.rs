@@ -4,26 +4,26 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     // Identifiers
-    Identifier(String),   // lowercase: constants, predicates, functors
-    Variable(String),     // uppercase: variables
+    Identifier(String), // lowercase: constants, predicates, functors
+    Variable(String),   // uppercase: variables
 
     // Delimiters
-    LParen,              // (
-    RParen,              // )
+    LParen, // (
+    RParen, // )
 
     // Logic operators (Unicode)
-    Not,                 // ¬
-    And,                 // ∧
-    Or,                  // ∨
-    Implies,             // →
-    Forall,              // ∀
-    Exists,              // ∃
+    Not,     // ¬
+    And,     // ∧
+    Or,      // ∨
+    Implies, // →
+    Forall,  // ∀
+    Exists,  // ∃
 
     // Query
-    Query,               // ?-
+    Query, // ?-
 
     // Directive
-    Colon,               // :
+    Colon, // :
 
     // String literal
     StringLit(String),
@@ -98,7 +98,10 @@ mod tests {
     #[test]
     fn test_lex_comments_are_skipped() {
         let mut lex = Lexer::new("// comment\np");
-        assert_eq!(lex.next_token().unwrap(), Token::Identifier("p".to_string()));
+        assert_eq!(
+            lex.next_token().unwrap(),
+            Token::Identifier("p".to_string())
+        );
     }
 
     #[test]
@@ -106,13 +109,19 @@ mod tests {
         let mut lex = Lexer::new("X:s1");
         assert_eq!(lex.next_token().unwrap(), Token::Variable("X".to_string()));
         assert_eq!(lex.next_token().unwrap(), Token::Colon);
-        assert_eq!(lex.next_token().unwrap(), Token::Identifier("s1".to_string()));
+        assert_eq!(
+            lex.next_token().unwrap(),
+            Token::Identifier("s1".to_string())
+        );
     }
 
     #[test]
     fn test_lex_skolem_identifier() {
         // Skolem names may start with '$' and should be lexed as identifiers.
         let mut lex = Lexer::new("$sk0");
-        assert_eq!(lex.next_token().unwrap(), Token::Identifier("$sk0".to_string()));
+        assert_eq!(
+            lex.next_token().unwrap(),
+            Token::Identifier("$sk0".to_string())
+        );
     }
 }

@@ -1,6 +1,6 @@
 use proptest::prelude::*;
+use sggslog::syntax::{Atom, Clause, Constant, FnSym, Literal, Term, Var};
 use std::collections::{HashMap, HashSet};
-use sggslog::syntax::{Term, Var, Constant, FnSym, Literal, Atom, Clause};
 
 // ============================================================================
 // Strategies
@@ -23,17 +23,15 @@ fn any_term() -> impl Strategy<Value = Term> {
         any_var().prop_map(Term::Var),
         any_constant().prop_map(Term::Const),
     ];
-    
+
     leaf.prop_recursive(
-        3, // deep
+        3,  // deep
         16, // max size
-        4, // items per collection
+        4,  // items per collection
         |inner| {
-            (
-                "[a-z][a-z0-9_]*",
-                prop::collection::vec(inner, 0..3)
-            ).prop_map(|(name, args)| Term::app(name, args))
-        }
+            ("[a-z][a-z0-9_]*", prop::collection::vec(inner, 0..3))
+                .prop_map(|(name, args)| Term::app(name, args))
+        },
     )
 }
 
@@ -73,7 +71,7 @@ proptest! {
         // Semantic definition: A clause is Horn if it has at most one positive literal.
         let positive_count = clause.literals.iter().filter(|l| l.positive).count();
         let expected = positive_count <= 1;
-        
+
         // This will fail until Clause::is_horn is implemented
         prop_assert_eq!(clause.is_horn(), expected);
     }
@@ -81,7 +79,7 @@ proptest! {
     #[test]
     fn prop_clause_variables_soundness(clause in any_clause()) {
         let vars = clause.variables();
-        
+
         // Every variable found in the terms must be in the set
         for lit in &clause.literals {
             for arg in &lit.atom.args {
@@ -90,7 +88,7 @@ proptest! {
                 // recursive_collect(clause) == clause.variables()
                 let mut manual_vars = HashSet::new();
                 collect_vars_term(arg, &mut manual_vars);
-                
+
                 for v in manual_vars {
                     prop_assert!(vars.contains(&v));
                 }
@@ -156,8 +154,10 @@ proptest! {
 // Helper to manually collect variables for verification
 fn collect_vars_term(term: &Term, acc: &mut HashSet<Var>) {
     match term {
-        Term::Var(v) => { acc.insert(v.clone()); },
-        Term::Const(_) => {},
+        Term::Var(v) => {
+            acc.insert(v.clone());
+        }
+        Term::Const(_) => {}
         Term::App(_, args) => {
             for arg in args {
                 collect_vars_term(arg, acc);

@@ -123,11 +123,17 @@ fn renaming_rejects_non_bijective_or_non_var() {
     let mut not_bijective = Substitution::empty();
     not_bijective.bind(Var::new("X"), Term::var("Y"));
     not_bijective.bind(Var::new("Z"), Term::var("Y"));
-    assert!(!not_bijective.is_renaming(), "Two vars to one is not bijective");
+    assert!(
+        !not_bijective.is_renaming(),
+        "Two vars to one is not bijective"
+    );
 
     let mut non_var = Substitution::empty();
     non_var.bind(Var::new("X"), Term::constant("a"));
-    assert!(!non_var.is_renaming(), "Mapping to non-var is not a renaming");
+    assert!(
+        !non_var.is_renaming(),
+        "Mapping to non-var is not a renaming"
+    );
 }
 
 #[test]

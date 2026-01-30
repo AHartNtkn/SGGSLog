@@ -111,6 +111,11 @@ impl Trail {
     pub fn clauses(&self) -> &[ConstrainedClause] {
         &self.clauses
     }
+
+    /// Access the initial interpretation guiding this trail.
+    pub fn initial_interpretation(&self) -> &InitialInterpretation {
+        &self.initial_interp
+    }
 }
 
 impl<'a> TrailInterpretation<'a> {
@@ -185,24 +190,15 @@ mod tests {
 
         // C2 = not P(f(y)) or [Q(y)]
         let c2 = Clause::new(vec![
-            Literal::neg(
-                "P",
-                vec![Term::app("f", vec![Term::var("y")])],
-            ),
+            Literal::neg("P", vec![Term::app("f", vec![Term::var("y")])]),
             Literal::pos("Q", vec![Term::var("y")]),
         ]);
         trail.push(ConstrainedClause::with_constraint(c2, Constraint::True, 1));
 
         // C3 = not P(f(z)) or not Q(g(z)) or [R(f(z), g(z))]
         let c3 = Clause::new(vec![
-            Literal::neg(
-                "P",
-                vec![Term::app("f", vec![Term::var("z")])],
-            ),
-            Literal::neg(
-                "Q",
-                vec![Term::app("g", vec![Term::var("z")])],
-            ),
+            Literal::neg("P", vec![Term::app("f", vec![Term::var("z")])]),
+            Literal::neg("Q", vec![Term::app("g", vec![Term::var("z")])]),
             Literal::pos(
                 "R",
                 vec![
@@ -253,7 +249,10 @@ mod tests {
         assert_eq!(trail.len(), 2);
         let prefix = trail.prefix(1);
         assert_eq!(prefix.len(), 1);
-        assert_eq!(prefix.clauses()[0].selected_literal(), trail.clauses()[0].selected_literal());
+        assert_eq!(
+            prefix.clauses()[0].selected_literal(),
+            trail.clauses()[0].selected_literal()
+        );
     }
 
     #[test]

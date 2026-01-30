@@ -47,7 +47,11 @@ fn arb_term(depth: u32) -> impl Strategy<Value = Term> {
 }
 
 fn arb_literal(depth: u32) -> impl Strategy<Value = Literal> {
-    (any::<bool>(), "[a-z]+", prop::collection::vec(arb_term(depth), 0..=3))
+    (
+        any::<bool>(),
+        "[a-z]+",
+        prop::collection::vec(arb_term(depth), 0..=3),
+    )
         .prop_map(|(pos, pred, args)| {
             if pos {
                 Literal::pos(pred, args)

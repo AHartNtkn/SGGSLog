@@ -20,6 +20,8 @@
 //!
 use std::collections::HashMap;
 
+use crate::constraint::Constraint;
+use crate::sggs::ConstrainedClause;
 use crate::syntax::{Atom, Clause, Literal, Term, Var};
 use crate::unify::{unify, unify_literals, unify_many, Substitution, UnifyResult};
 
@@ -32,21 +34,26 @@ fn theory_from_clauses(clauses: Vec<Clause>) -> crate::theory::Theory {
     theory
 }
 
-mod unification_semantics;
-mod substitution_semantics;
-mod clause_semantics;
-mod trail_semantics;
-mod extension_semantics;
-mod completeness_semantics;
-mod resolution_semantics;
-mod constraint_semantics;
+/// Helper to build a unit constrained clause with a True constraint.
+fn unit(lit: Literal) -> ConstrainedClause {
+    ConstrainedClause::with_constraint(Clause::new(vec![lit]), Constraint::True, 0)
+}
+
 mod assignment_semantics;
+mod clause_semantics;
+mod completeness_semantics;
+mod conflict_solving_semantics;
+mod constraint_semantics;
+mod extension_semantics;
+mod fairness_semantics;
 mod fragment_semantics;
 mod move_semantics;
-mod splitting_semantics;
+mod partial_interpretation_semantics;
 mod proptests;
 mod query_semantics;
+mod resolution_semantics;
 mod session_semantics;
-mod fairness_semantics;
-mod partial_interpretation_semantics;
-mod conflict_solving_semantics;
+mod splitting_semantics;
+mod substitution_semantics;
+mod trail_semantics;
+mod unification_semantics;

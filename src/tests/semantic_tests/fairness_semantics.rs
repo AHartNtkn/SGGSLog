@@ -8,11 +8,33 @@ use super::*;
 // We require a fair, non-heuristic scheduler that never starves applicable
 // non-extension inferences.
 
-use crate::sggs::{InferenceRule, next_inference, ConstrainedClause, Trail, InitialInterpretation};
-use crate::constraint::Constraint;
+use crate::sggs::{
+    applicable_inferences, next_inference, ConstrainedClause, InferenceRule, InitialInterpretation,
+    Trail,
+};
 
-fn unit(lit: Literal) -> ConstrainedClause {
-    ConstrainedClause::with_constraint(Clause::new(vec![lit]), Constraint::True, 0)
+fn assert_next_is_applicable(trail: &Trail, theory: &crate::theory::Theory) {
+    let next = next_inference(trail, theory);
+    let applicable = applicable_inferences(trail, theory);
+    assert!(
+        applicable.contains(&next),
+        "next_inference must return an applicable rule"
+    );
+}
+
+fn assert_no_extension_when_non_extension_exists(trail: &Trail, theory: &crate::theory::Theory) {
+    let applicable = applicable_inferences(trail, theory);
+    let has_non_extension = applicable
+        .iter()
+        .any(|r| *r != InferenceRule::Extension && *r != InferenceRule::None);
+    if has_non_extension {
+        let next = next_inference(trail, theory);
+        assert_ne!(
+            next,
+            InferenceRule::Extension,
+            "extension must not be chosen when a non-extension rule applies"
+        );
+    }
 }
 
 #[test]
@@ -23,13 +45,8 @@ fn fairness_prefers_resolution_on_conflict() {
     trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
-    let rule = next_inference(&trail, &theory);
-    assert_ne!(
-        rule,
-        InferenceRule::Extension,
-        "non-extension inferences must not be starved when a conflict exists"
-    );
-    assert_ne!(rule, InferenceRule::None, "an applicable inference should be chosen");
+    assert_next_is_applicable(&trail, &theory);
+    assert_no_extension_when_non_extension_exists(&trail, &theory);
 }
 
 #[test]
@@ -39,13 +56,8 @@ fn fairness_prefers_splitting_over_extension_when_intersection_exists() {
     trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
-    let rule = next_inference(&trail, &theory);
-    assert_ne!(
-        rule,
-        InferenceRule::Extension,
-        "non-extension inferences must not be starved when an intersection exists"
-    );
-    assert_ne!(rule, InferenceRule::None, "an applicable inference should be chosen");
+    assert_next_is_applicable(&trail, &theory);
+    assert_no_extension_when_non_extension_exists(&trail, &theory);
 }
 
 #[test]
@@ -57,13 +69,8 @@ fn fairness_prefers_deletion_when_disposable_exists() {
     trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("R", vec![])])]);
-    let rule = next_inference(&trail, &theory);
-    assert_ne!(
-        rule,
-        InferenceRule::Extension,
-        "non-extension inferences must not be starved when a disposable clause exists"
-    );
-    assert_ne!(rule, InferenceRule::None, "an applicable inference should be chosen");
+    assert_next_is_applicable(&trail, &theory);
+    assert_no_extension_when_non_extension_exists(&trail, &theory);
 }
 
 #[test]

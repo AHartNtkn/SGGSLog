@@ -2,10 +2,11 @@
 
 use std::collections::HashSet;
 
+use super::DerivationConfig;
+use crate::syntax::Signature;
 use crate::syntax::{Clause, Literal, Var};
 use crate::theory::Theory;
 use crate::unify::Substitution;
-use super::DerivationConfig;
 
 /// A conjunctive query (goal).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,14 +51,30 @@ pub enum QueryResult {
     ResourceLimit,
 }
 
+/// Policy for projecting internal symbols from user-visible answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectionPolicy {
+    /// Only allow symbols from the user signature to appear in answers.
+    OnlyUserSymbols,
+    /// Allow internal symbols (e.g., Skolem/Tseitin) in answers.
+    AllowInternal,
+}
+
 /// Answer a query against a theory using SGGS model construction.
 ///
 /// Semantics: build (or approximate) a model with SGGS, then return substitutions
 /// that make the query true in that model.
-pub fn answer_query(
+pub fn answer_query(_theory: &Theory, _query: &Query, _config: DerivationConfig) -> QueryResult {
+    todo!("answer_query implementation")
+}
+
+/// Answer a query and project substitutions to a user signature.
+pub fn answer_query_projected(
     _theory: &Theory,
     _query: &Query,
     _config: DerivationConfig,
+    _user_signature: &Signature,
+    _policy: ProjectionPolicy,
 ) -> QueryResult {
-    todo!("answer_query implementation")
+    todo!("answer_query_projected implementation")
 }

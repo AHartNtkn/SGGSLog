@@ -231,7 +231,10 @@ fn i_false_selected_reports_only_i_false_literals() {
     let i_false = interp.i_false_selected();
     let indices: Vec<usize> = i_false.iter().map(|(idx, _)| *idx).collect();
 
-    assert!(indices.contains(&0), "I-false selected literal should be reported");
+    assert!(
+        indices.contains(&0),
+        "I-false selected literal should be reported"
+    );
     assert!(
         !indices.contains(&1),
         "I-true selected literal should not be reported"

@@ -1,13 +1,15 @@
 //! Syntax types for first-order logic terms, literals, and clauses.
 
-mod term;
-mod literal;
 mod clause;
-mod order;
 mod formula;
+mod literal;
+mod order;
+mod signature;
+mod term;
 
-pub use term::{Term, Var, Constant, FnSym};
-pub use literal::{Literal, Atom};
 pub use clause::Clause;
-pub use order::{AtomOrder, AtomCmp};
 pub use formula::Formula;
+pub use literal::{Atom, Literal};
+pub use order::{AtomCmp, AtomOrder};
+pub use signature::Signature;
+pub use term::{Constant, FnSym, Term, Var};

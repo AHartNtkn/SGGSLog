@@ -1,7 +1,7 @@
 //! Parser for SGGSLog syntax.
 
-use crate::syntax::Literal;
 use super::ast::Statement;
+use crate::syntax::Literal;
 
 /// Parse error with location information.
 #[derive(Debug, Clone, PartialEq, Eq)]

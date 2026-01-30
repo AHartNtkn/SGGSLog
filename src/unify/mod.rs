@@ -4,4 +4,4 @@ mod substitution;
 mod unify;
 
 pub use substitution::Substitution;
-pub use unify::{unify, unify_literals, unify_many, UnifyResult, UnifyError};
+pub use unify::{unify, unify_literals, unify_many, UnifyError, UnifyResult};

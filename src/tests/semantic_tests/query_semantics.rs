@@ -49,7 +49,10 @@ fn ground_query_proved_when_entailed() {
     match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
         QueryResult::Answers(ans) => {
             assert_eq!(ans.len(), 1, "ground query should yield exactly one answer");
-            assert!(ans[0].domain().is_empty(), "ground answer should be empty substitution");
+            assert!(
+                ans[0].domain().is_empty(),
+                "ground answer should be empty substitution"
+            );
             assert_no_spurious_bindings(&ans, &query.variables());
             assert_no_duplicates(&ans);
         }
@@ -108,8 +111,12 @@ fn conjunctive_query_multiple_answers() {
         QueryResult::Answers(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.len(), 2, "expected exactly two answers");
-            assert!(ans.iter().any(|s| s.lookup(&x) == Some(&Term::constant("a"))));
-            assert!(ans.iter().any(|s| s.lookup(&x) == Some(&Term::constant("b"))));
+            assert!(ans
+                .iter()
+                .any(|s| s.lookup(&x) == Some(&Term::constant("a"))));
+            assert!(ans
+                .iter()
+                .any(|s| s.lookup(&x) == Some(&Term::constant("b"))));
             assert_no_spurious_bindings(&ans, &query.variables());
             assert_no_duplicates(&ans);
         }
@@ -161,6 +168,27 @@ fn negative_literal_query_no_answers() {
     match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
         QueryResult::NoAnswers => {}
         other => panic!("Expected no answers, got {:?}", other),
+    }
+}
+
+#[test]
+fn negative_literal_query_true_when_atom_absent() {
+    // Empty theory under I⁻ has no true atoms, so ¬p(a) should be true.
+    let theory = crate::theory::Theory::new();
+    let query = Query::new(vec![Literal::neg("p", vec![Term::constant("a")])]);
+    match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
+        QueryResult::Answers(ans) => {
+            assert_eq!(
+                ans.len(),
+                1,
+                "ground negative query should yield one answer"
+            );
+            assert!(
+                ans[0].domain().is_empty(),
+                "ground answer should be empty substitution"
+            );
+        }
+        other => panic!("Expected answers, got {:?}", other),
     }
 }
 

@@ -169,7 +169,10 @@ fn occurs_check_through_unification() {
     //  Occurs check via unification chain
     // f(X, X) = f(Y, g(Y)) implies X = Y and X = g(Y) = g(X)
     let t1 = Term::app("f", vec![Term::var("X"), Term::var("X")]);
-    let t2 = Term::app("f", vec![Term::var("Y"), Term::app("g", vec![Term::var("Y")])]);
+    let t2 = Term::app(
+        "f",
+        vec![Term::var("Y"), Term::app("g", vec![Term::var("Y")])],
+    );
     assert!(
         unify(&t1, &t2).is_failure(),
         "Occurs check must catch indirect cycles through unification"

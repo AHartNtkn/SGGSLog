@@ -115,6 +115,9 @@ mod tests {
             }
         }
         assert_eq!(intersects, 1, "exactly one split part should allow x = a");
-        assert!(disjoint >= 1, "at least one split part should exclude x = a");
+        assert!(
+            disjoint >= 1,
+            "at least one split part should exclude x = a"
+        );
     }
 }

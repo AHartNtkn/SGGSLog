@@ -3,16 +3,16 @@
 //! This crate implements Semantically Guided Goal-Sensitive Reasoning (SGGS)
 //! for first-order logic theorem proving.
 
-pub mod syntax;
-pub mod unify;
 pub mod constraint;
-pub mod sggs;
-pub mod parser;
-pub mod normalize;
-pub mod theory;
-pub mod repl;
 pub mod jupyter;
+pub mod normalize;
+pub mod parser;
+pub mod repl;
 pub mod session;
+pub mod sggs;
+pub mod syntax;
+pub mod theory;
+pub mod unify;
 
 #[cfg(test)]
 mod tests;

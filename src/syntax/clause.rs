@@ -164,10 +164,7 @@ mod tests {
 
     #[test]
     fn test_binary_clause_not_unit() {
-        let clause = Clause::new(vec![
-            Literal::pos("p", vec![]),
-            Literal::neg("q", vec![]),
-        ]);
+        let clause = Clause::new(vec![Literal::pos("p", vec![]), Literal::neg("q", vec![])]);
         assert!(!clause.is_unit());
     }
 
@@ -187,20 +184,14 @@ mod tests {
     #[test]
     fn test_horn_clause_zero_positive() {
         // ¬p ∨ ¬q (goal clause, zero positive)
-        let clause = Clause::new(vec![
-            Literal::neg("p", vec![]),
-            Literal::neg("q", vec![]),
-        ]);
+        let clause = Clause::new(vec![Literal::neg("p", vec![]), Literal::neg("q", vec![])]);
         assert!(clause.is_horn());
     }
 
     #[test]
     fn test_non_horn_multiple_positive() {
         // p ∨ q (two positive literals)
-        let clause = Clause::new(vec![
-            Literal::pos("p", vec![]),
-            Literal::pos("q", vec![]),
-        ]);
+        let clause = Clause::new(vec![Literal::pos("p", vec![]), Literal::pos("q", vec![])]);
         assert!(!clause.is_horn());
     }
 
@@ -239,17 +230,13 @@ mod tests {
 
     #[test]
     fn test_clause_is_ground() {
-        let ground = Clause::new(vec![
-            Literal::pos("p", vec![Term::constant("a")]),
-        ]);
+        let ground = Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
         assert!(ground.is_ground());
     }
 
     #[test]
     fn test_clause_not_ground() {
-        let nonground = Clause::new(vec![
-            Literal::pos("p", vec![Term::var("X")]),
-        ]);
+        let nonground = Clause::new(vec![Literal::pos("p", vec![Term::var("X")])]);
         assert!(!nonground.is_ground());
     }
 
@@ -305,10 +292,7 @@ mod tests {
 
     #[test]
     fn test_positive_literals_empty_when_none() {
-        let clause = Clause::new(vec![
-            Literal::neg("p", vec![]),
-            Literal::neg("q", vec![]),
-        ]);
+        let clause = Clause::new(vec![Literal::neg("p", vec![]), Literal::neg("q", vec![])]);
         let positive = clause.positive_literals();
         assert!(positive.is_empty());
     }
