@@ -219,6 +219,63 @@ mod tests {
     }
 
     #[test]
+    fn derive_with_trace_respects_max_steps_zero() {
+        let theory = Theory::new();
+        let config = DerivationConfig {
+            max_steps: Some(0),
+            initial_interp: InitialInterpretation::AllNegative,
+        };
+        let (result, trace) = derive_with_trace(&theory, config);
+        assert!(matches!(result, DerivationResult::ResourceLimit));
+        assert!(trace.is_empty(), "no steps allowed when max_steps=0");
+    }
+
+    #[test]
+    fn derive_with_trace_length_limited() {
+        let theory = Theory::new();
+        let config = DerivationConfig {
+            max_steps: Some(1),
+            initial_interp: InitialInterpretation::AllNegative,
+        };
+        let (_result, trace) = derive_with_trace(&theory, config);
+        assert!(trace.len() <= 1, "trace must respect max_steps");
+    }
+
+    #[test]
+    fn derivation_step_reports_trail_lengths_consistently() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            Constraint::True,
+            0,
+        ));
+        let theory = Theory::new();
+        let mut state = DerivationState::from_trail(theory, trail, DerivationConfig::default());
+        let len_before = state.trail().len();
+        let step = state.step().expect("expected a step");
+        assert_eq!(step.trail_len_before, len_before);
+        assert_eq!(step.trail_len_after, state.trail().len());
+    }
+
+    #[test]
+    fn resolution_steps_do_not_increase_trail_length() {
+        let theory = Theory::new();
+        let config = DerivationConfig {
+            max_steps: Some(10),
+            initial_interp: InitialInterpretation::AllNegative,
+        };
+        let (_result, trace) = derive_with_trace(&theory, config);
+        for step in trace {
+            if step.rule == InferenceRule::Resolution {
+                assert!(
+                    step.trail_len_after <= step.trail_len_before,
+                    "resolution should not increase trail length"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn applicable_inferences_includes_left_split() {
         // Left-split applies when an I-all-true clause is assigned to a dp(Γ) clause
         // with strict subset condition ¬Gr(B⊲M) ⊂ pcgi(A⊲L,Γ), and no factoring (†).

@@ -71,6 +71,57 @@ fn session_executes_query_statement() {
 }
 
 #[test]
+fn session_query_dedups_answers_by_execution_time() {
+    // User-visible answers must be deduplicated by the time they are returned.
+    let mut session = Session::new();
+    let fact = Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    session
+        .execute_statement(Statement::Clause(fact.clone()))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(fact))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let result = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    let answers = match result {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answers(ans)) => ans,
+        other => panic!("expected answers, got {:?}", other),
+    };
+    assert_eq!(answers.len(), 1, "duplicate answers must be filtered");
+}
+
+#[test]
+fn session_dedups_alpha_equivalent_sources_in_answers() {
+    // Two alpha-equivalent clauses should not yield duplicate answers.
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::var("X")],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::var("Y")],
+        )])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    let result = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    let answers = match result {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answers(ans)) => ans,
+        other => panic!("expected answers, got {:?}", other),
+    };
+    assert_eq!(answers.len(), 1, "alpha-equivalent sources must dedup answers");
+}
+
+#[test]
 fn session_applies_set_directive() {
     let mut session = Session::new();
     let stmt = Statement::Directive(Directive::Set("max_steps".to_string(), "10".to_string()));

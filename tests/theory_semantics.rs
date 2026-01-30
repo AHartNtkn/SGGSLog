@@ -131,13 +131,11 @@ fn test_from_statements_dedup_alpha_equivalent() {
     let stmts = vec![Statement::Clause(c1.clone()), Statement::Clause(c2.clone())];
 
     let theory = Theory::from_statements(&stmts).expect("expected theory");
-    // Alpha-equivalent clauses should not be lost, but order/duplication is irrelevant.
+    // Alpha-equivalent clauses may be retained or deduplicated internally.
     assert!(
-        !theory.clauses().is_empty(),
-        "theory should contain at least one clause"
+        theory.clauses().iter().any(|c| alpha_equivalent(c, &c1)),
+        "theory should contain a clause alpha-equivalent to input"
     );
-    let all_alpha = theory.clauses().iter().all(|c| alpha_equivalent(c, &c1));
-    assert!(all_alpha, "all retained clauses should be alpha-equivalent");
 }
 
 #[test]

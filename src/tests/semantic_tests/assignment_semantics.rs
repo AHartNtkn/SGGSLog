@@ -7,6 +7,9 @@ use super::*;
 // Reference: [BP16a] Definitions 8-9 (Dependence and Assignment)
 use crate::constraint::Constraint;
 use crate::sggs::{compute_assignments, ConstrainedClause, InitialInterpretation, Trail};
+use crate::sggs::sggs_left_split;
+use crate::constraint::AtomicConstraint;
+use crate::sggs::sggs_factoring;
 
 #[test]
 fn assignment_maps_i_true_literals_to_justification() {
@@ -119,4 +122,73 @@ fn assignment_ignores_i_false_literals() {
 
     let assigns = compute_assignments(&trail);
     assert_eq!(assigns.assigned_to(0, 0), None);
+}
+
+#[test]
+fn assignment_preserved_after_factoring() {
+    // Factoring should preserve the justification assignment of the selected literal.
+    let a = Term::constant("a");
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![a.clone()])]),
+        Constraint::True,
+        0,
+    ));
+    let conflict = ConstrainedClause::with_constraint(
+        Clause::new(vec![
+            Literal::neg("P", vec![a.clone()]),
+            Literal::neg("P", vec![a.clone()]),
+        ]),
+        Constraint::True,
+        0,
+    );
+    trail.push(conflict.clone());
+
+    let assigns = compute_assignments(&trail);
+    assert_eq!(assigns.assigned_to(1, 0), Some(0));
+    assert_eq!(assigns.assigned_to(1, 1), Some(0));
+
+    let factored = sggs_factoring(&conflict, 1).expect("expected factoring");
+    let mut trail2 = Trail::new(InitialInterpretation::AllNegative);
+    trail2.push(ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![a.clone()])]),
+        Constraint::True,
+        0,
+    ));
+    trail2.push(factored);
+    let assigns2 = compute_assignments(&trail2);
+    assert_eq!(assigns2.assigned_to(1, 0), Some(0));
+}
+
+#[test]
+fn assignment_after_left_split_representative() {
+    // Left-split should preserve the dependency assignment on the representative.
+    let base = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::True,
+        0,
+    );
+    let conflict = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    );
+    let split = sggs_left_split(&base, &conflict).expect("expected left split");
+    let x_eq_a = Constraint::Atomic(AtomicConstraint::Identical(
+        Term::var("x"),
+        Term::constant("a"),
+    ));
+    let representative = split
+        .parts
+        .iter()
+        .find(|p| p.constraint.clone().and(x_eq_a.clone()).is_satisfiable())
+        .expect("expected representative intersecting with P(a)")
+        .clone();
+
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(representative);
+    trail.push(conflict);
+
+    let assigns = compute_assignments(&trail);
+    assert_eq!(assigns.assigned_to(1, 0), Some(0));
 }

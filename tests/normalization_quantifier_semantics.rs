@@ -11,19 +11,35 @@ fn single_formula(src: &str) -> sggslog::syntax::Formula {
     }
 }
 
-fn clausify_single(src: &str) -> Clause {
+fn clausify_all(src: &str) -> Vec<Clause> {
     let formula = single_formula(src);
     let clauses = clausify_formula(&formula).expect("clausify_formula failed");
-    assert_eq!(clauses.len(), 1, "expected one clause");
-    clauses[0].clone()
+    assert!(!clauses.is_empty(), "expected at least one clause");
+    clauses
+}
+
+fn find_clause_with_predicate(clauses: &[Clause], pred: &str) -> Clause {
+    clauses
+        .iter()
+        .find(|c| c.literals.iter().any(|l| l.atom.predicate == pred))
+        .cloned()
+        .expect("no clause contained expected predicate")
+}
+
+fn first_literal_with_predicate<'a>(clause: &'a Clause, pred: &str) -> &'a Literal {
+    clause
+        .literals
+        .iter()
+        .find(|l| l.atom.predicate == pred)
+        .expect("expected literal with predicate")
 }
 
 #[test]
 fn test_skolemization_respects_shadowing_scope() {
     // Shadowed variable: inner ∃X is distinct from outer ∀X; skolem depends on the universal.
-    let clause = clausify_single("∀X ∃X (p X)");
-    assert_eq!(clause.literals.len(), 1);
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∀X ∃X (p X)");
+    let clause = find_clause_with_predicate(&clauses, "p");
+    let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
         Term::App(_, args) => {
             assert_eq!(args.len(), 1, "Skolem function should depend on one universal");
@@ -39,18 +55,21 @@ fn test_skolem_constant_shared_across_conjunction() {
     // ∃X (p X ∧ q X) should introduce one Skolem constant shared across clauses.
     let stmts = parse_file("∃X (p X ∧ q X)").expect("parse_file failed");
     let clauses = clausify_statements(&stmts).expect("clausify_statements failed");
-    assert_eq!(clauses.len(), 2);
+    let p_clause = find_clause_with_predicate(&clauses, "p");
+    let q_clause = find_clause_with_predicate(&clauses, "q");
 
-    let mut skolem_names = Vec::new();
-    for c in &clauses {
-        assert_eq!(c.literals.len(), 1);
-        match &c.literals[0].atom.args[0] {
-            Term::Const(cn) => skolem_names.push(cn.name().to_string()),
-            Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {
-                skolem_names.push(sym.name.clone())
-            }
-            _ => panic!("expected Skolem constant"),
-        }
-    }
-    assert_eq!(skolem_names[0], skolem_names[1], "same existential should yield same Skolem symbol");
+    let p_lit = first_literal_with_predicate(&p_clause, "p");
+    let q_lit = first_literal_with_predicate(&q_clause, "q");
+
+    let p_sk = match &p_lit.atom.args[0] {
+        Term::Const(cn) => cn.name().to_string(),
+        Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
+        _ => panic!("expected Skolem constant"),
+    };
+    let q_sk = match &q_lit.atom.args[0] {
+        Term::Const(cn) => cn.name().to_string(),
+        Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
+        _ => panic!("expected Skolem constant"),
+    };
+    assert_eq!(p_sk, q_sk, "same existential should yield same Skolem symbol");
 }

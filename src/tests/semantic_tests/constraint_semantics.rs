@@ -89,6 +89,29 @@ fn constraint_intersects_false_when_unsat() {
 }
 
 #[test]
+fn constraint_intersects_is_symmetric() {
+    let c1 = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("y"),
+    ));
+    let c2 = Constraint::Atomic(AtomicConstraint::RootNotEquals(
+        Term::var("x"),
+        "f".to_string(),
+    ));
+    assert_eq!(c1.intersects(&c2), c2.intersects(&c1));
+}
+
+#[test]
+fn constraint_intersect_with_false_is_unsatisfiable() {
+    let c1 = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("y"),
+    ));
+    let inter = c1.intersect(&Constraint::False);
+    assert!(!inter.is_satisfiable());
+}
+
+#[test]
 fn atomic_constraint_evaluate_with_substitution() {
     let c = AtomicConstraint::Identical(Term::var("X"), Term::constant("a"));
     let mut subst = Substitution::empty();

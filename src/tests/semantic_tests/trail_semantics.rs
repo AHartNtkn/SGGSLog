@@ -42,6 +42,45 @@ fn selected_literal_must_be_i_false_under_i_negative() {
 }
 
 #[test]
+fn trail_len_and_is_empty_track_clause_count() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    assert_eq!(trail.len(), 0);
+    assert!(trail.is_empty());
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]),
+        0,
+    ));
+    assert_eq!(trail.len(), 1);
+    assert!(!trail.is_empty());
+}
+
+#[test]
+fn trail_prefix_takes_first_n_clauses() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let c1 = ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]),
+        0,
+    );
+    let c2 = ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("q", vec![Term::constant("b")])]),
+        0,
+    );
+    trail.push(c1.clone());
+    trail.push(c2.clone());
+
+    let prefix0 = trail.prefix(0);
+    assert_eq!(prefix0.len(), 0);
+    assert!(matches!(
+        prefix0.initial_interpretation(),
+        InitialInterpretation::AllNegative
+    ));
+
+    let prefix1 = trail.prefix(1);
+    assert_eq!(prefix1.len(), 1);
+    assert_eq!(prefix1.clauses()[0].selected_literal(), c1.selected_literal());
+}
+
+#[test]
 fn selected_literal_must_be_i_false_under_i_positive() {
     // [BP16a] Under I⁺, negative literals are I-false
     let _trail = Trail::new(InitialInterpretation::AllPositive);

@@ -115,3 +115,18 @@ fn substitution_preserves_signs() {
     assert!(result.literals[0].positive, "Sign must be preserved");
     assert!(!result.literals[1].positive, "Sign must be preserved");
 }
+
+#[test]
+fn substitution_applies_recursively_to_nested_terms() {
+    let clause = Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::app("f", vec![Term::var("X")])],
+    )]);
+    let mut subst = HashMap::new();
+    subst.insert(Var::new("X"), Term::constant("a"));
+    let result = clause.apply_subst(&subst);
+    assert_eq!(
+        result.literals[0].atom.args[0],
+        Term::app("f", vec![Term::constant("a")])
+    );
+}

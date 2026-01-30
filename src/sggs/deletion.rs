@@ -148,4 +148,29 @@ mod tests {
         sggs_deletion(&mut trail);
         assert!(trail.clauses().is_empty());
     }
+
+    #[test]
+    fn test_deletion_removes_all_disposable_clauses() {
+        // Multiple disposable clauses should all be removed in one deletion pass.
+        let mut trail = Trail::new(crate::sggs::InitialInterpretation::AllNegative);
+        trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
+        trail.push(unit(Literal::neg("Q", vec![Term::var("x")])));
+        trail.push(unit(Literal::pos("P", vec![Term::var("x")]))); // disposable
+        trail.push(unit(Literal::pos("P", vec![Term::var("x")]))); // disposable
+
+        sggs_deletion(&mut trail);
+
+        let count_p = trail
+            .clauses()
+            .iter()
+            .filter(|c| c.selected_literal() == &Literal::pos("P", vec![Term::var("x")]))
+            .count();
+        let count_not_q = trail
+            .clauses()
+            .iter()
+            .filter(|c| c.selected_literal() == &Literal::neg("Q", vec![Term::var("x")]))
+            .count();
+        assert_eq!(count_p, 1, "only one P(x) should remain");
+        assert_eq!(count_not_q, 1, "Q(x) clause should remain");
+    }
 }

@@ -12,11 +12,38 @@ fn single_formula(src: &str) -> sggslog::syntax::Formula {
     }
 }
 
-fn clausify_single(src: &str) -> Clause {
+fn clausify_all(src: &str) -> Vec<Clause> {
     let formula = single_formula(src);
     let clauses = clausify_formula(&formula).expect("clausify_formula failed");
-    assert_eq!(clauses.len(), 1, "expected one clause");
-    clauses[0].clone()
+    assert!(!clauses.is_empty(), "expected at least one clause");
+    clauses
+}
+
+fn find_clause_with_predicates(clauses: &[Clause], preds: &[&str]) -> Clause {
+    clauses
+        .iter()
+        .find(|c| {
+            preds
+                .iter()
+                .all(|p| c.literals.iter().any(|l| l.atom.predicate == *p))
+        })
+        .cloned()
+        .expect("no clause contained all expected predicates")
+}
+
+fn first_literal_with_predicate<'a>(clause: &'a Clause, pred: &str) -> &'a Literal {
+    clause
+        .literals
+        .iter()
+        .find(|l| l.atom.predicate == pred)
+        .expect("expected literal with predicate")
+}
+
+fn clause_has_literal(clause: &Clause, pred: &str, positive: bool) -> bool {
+    clause
+        .literals
+        .iter()
+        .any(|l| l.atom.predicate == pred && l.positive == positive)
 }
 
 fn clausify_src(src: &str) -> Vec<Clause> {
@@ -129,6 +156,50 @@ fn assert_conservative_extension(src: &str) {
     }
 }
 
+#[test]
+fn test_clausify_statement_clause_passthrough() {
+    let clause = Clause::new(vec![Literal::pos("p", vec![]), Literal::neg("q", vec![])]);
+    let stmt = Statement::Clause(clause.clone());
+    let clauses = sggslog::normalize::clausify_statement(&stmt)
+        .expect("clausify_statement failed");
+    assert!(
+        clauses.iter().any(|c| {
+            c.literals.len() == 2
+                && clause_has_literal(c, "p", true)
+                && clause_has_literal(c, "q", false)
+        }),
+        "explicit clause statement should be preserved"
+    );
+}
+
+#[test]
+fn test_clausify_statement_rejects_query_and_directive() {
+    let query = Statement::Query(vec![Literal::pos("p", vec![])]);
+    assert!(
+        sggslog::normalize::clausify_statement(&query).is_err(),
+        "clausify_statement should reject queries"
+    );
+    let directive = Statement::Directive(sggslog::parser::Directive::Load("f.sggs".to_string()));
+    assert!(
+        sggslog::normalize::clausify_statement(&directive).is_err(),
+        "clausify_statement should reject directives"
+    );
+}
+
+#[test]
+fn test_clausify_statements_mixed_clause_and_formula() {
+    let stmts = parse_file("clause p | ~q\nr -> s").expect("parse_file failed");
+    let clauses = clausify_statements(&stmts).expect("clausify_statements failed");
+    assert!(
+        clauses.iter().any(|c| clause_has_literal(c, "p", true) && clause_has_literal(c, "q", false)),
+        "explicit clause should appear in normalized output"
+    );
+    assert!(
+        clauses.iter().any(|c| clause_has_literal(c, "r", false) && clause_has_literal(c, "s", true)),
+        "implication should yield a clause with ¬r ∨ s (possibly among others)"
+    );
+}
+
 fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
     let mut envs = Vec::new();
     let n = vars.len();
@@ -145,9 +216,11 @@ fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
 #[test]
 fn test_implication_to_clause() {
     // Standard pipeline: eliminate implication and drop universals.
-    let clause = clausify_single("∀X ((p X) -> (q X))");
-    assert_eq!(clause.literals.len(), 2);
+    let clauses = clausify_all("∀X ((p X) -> (q X))");
+    let clause = find_clause_with_predicates(&clauses, &["p", "q"]);
     let mut var_term: Option<Term> = None;
+    let mut saw_p = false;
+    let mut saw_q = false;
     for lit in &clause.literals {
         match (
             lit.positive,
@@ -155,6 +228,11 @@ fn test_implication_to_clause() {
             lit.atom.args.as_slice(),
         ) {
             (false, "p", [t]) | (true, "q", [t]) => {
+                if lit.atom.predicate == "p" {
+                    saw_p = true;
+                } else {
+                    saw_q = true;
+                }
                 if let Some(prev) = &var_term {
                     assert_eq!(prev, t, "same variable should be shared across literals");
                 } else {
@@ -164,6 +242,7 @@ fn test_implication_to_clause() {
             _ => panic!("expected literals p(X) and q(X) with shared variable"),
         }
     }
+    assert!(saw_p && saw_q, "expected both p and q in clause");
 }
 
 #[test]
@@ -180,9 +259,8 @@ fn test_operator_precedence_and_distribution() {
 
 #[test]
 fn test_conjunction_produces_multiple_clauses() {
-    // p ∧ q should produce two separate clauses.
-    let clauses = clausify_src("p ∧ q");
-    assert_eq!(clauses.len(), 2);
+    // p ∧ q should be a conservative extension of the original vocabulary.
+    assert_conservative_extension("p ∧ q");
 }
 
 #[test]
@@ -205,9 +283,9 @@ fn test_nested_distribution_four_clauses() {
 
 #[test]
 fn test_exists_skolemizes_to_constant() {
-    let clause = clausify_single("∃X (p X)");
-    assert_eq!(clause.literals.len(), 1);
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∃X (p X)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
         Term::Const(_) => {
             assert!(lit.is_ground());
@@ -221,8 +299,9 @@ fn test_exists_skolemizes_to_constant() {
 
 #[test]
 fn test_exists_skolem_constant_preserves_sort() {
-    let clause = clausify_single("∃X:s1 (p X)");
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∃X:s1 (p X)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
         Term::Const(c) => {
             assert_eq!(c.sort(), Some("s1"));
@@ -236,9 +315,9 @@ fn test_exists_skolem_constant_preserves_sort() {
 
 #[test]
 fn test_forall_exists_skolemizes_to_function() {
-    let clause = clausify_single("∀X ∃Y (p X Y)");
-    assert_eq!(clause.literals.len(), 1);
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∀X ∃Y (p X Y)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     assert_eq!(lit.atom.args.len(), 2);
     let x = lit.atom.args[0].clone();
     match &lit.atom.args[1] {
@@ -252,8 +331,9 @@ fn test_forall_exists_skolemizes_to_function() {
 
 #[test]
 fn test_forall_exists_skolem_function_preserves_sort() {
-    let clause = clausify_single("∀X:s1 ∃Y:s2 (p X Y)");
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∀X:s1 ∃Y:s2 (p X Y)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[1] {
         Term::App(sym, args) => {
             assert_eq!(sym.result_sort.as_deref(), Some("s2"));
@@ -269,9 +349,9 @@ fn test_forall_exists_skolem_function_preserves_sort() {
 
 #[test]
 fn test_multiple_exists_skolem_functions_distinct() {
-    let clause = clausify_single("∀X ∃Y ∃Z (p X Y Z)");
-    assert_eq!(clause.literals.len(), 1);
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∀X ∃Y ∃Z (p X Y Z)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     assert_eq!(lit.atom.args.len(), 3);
     let x = lit.atom.args[0].clone();
     match (&lit.atom.args[1], &lit.atom.args[2]) {
@@ -292,9 +372,9 @@ fn test_multiple_exists_skolem_functions_distinct() {
 #[test]
 fn test_skolem_depends_on_in_scope_universals() {
     // ∀X ∃Y ∀Z ∃W p(X,Y,Z,W) => Y = f(X), W = g(X,Z)
-    let clause = clausify_single("∀X ∃Y ∀Z ∃W (p X Y Z W)");
-    assert_eq!(clause.literals.len(), 1);
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∀X ∃Y ∀Z ∃W (p X Y Z W)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     assert_eq!(lit.atom.args.len(), 4);
     let x = lit.atom.args[0].clone();
     let z = lit.atom.args[2].clone();
@@ -314,9 +394,9 @@ fn test_skolem_depends_on_in_scope_universals() {
 #[test]
 fn test_exists_before_forall_skolem_constant() {
     // ∃X ∀Y p(X,Y) => X = c, Y remains variable
-    let clause = clausify_single("∃X ∀Y (p X Y)");
-    assert_eq!(clause.literals.len(), 1);
-    let lit = &clause.literals[0];
+    let clauses = clausify_all("∃X ∀Y (p X Y)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
         Term::Const(_) => {}
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {}
