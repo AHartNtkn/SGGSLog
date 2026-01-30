@@ -86,11 +86,23 @@ fn session_query_dedups_answers_by_execution_time() {
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
-    let answers = match result {
-        ExecResult::QueryResult(crate::sggs::QueryResult::Answers(ans)) => ans,
-        other => panic!("expected answers, got {:?}", other),
+    let first = match result {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
     };
-    assert_eq!(answers.len(), 1, "duplicate answers must be filtered");
+    assert!(matches!(first, crate::sggs::QueryResult::Answer(_)));
+
+    let next = session
+        .execute_statement(Statement::Directive(Directive::Next))
+        .expect("execute_statement failed");
+    let next = match next {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
+    };
+    assert!(
+        matches!(next, crate::sggs::QueryResult::Exhausted),
+        "duplicate answers must be filtered"
+    );
 }
 
 #[test]
@@ -114,11 +126,23 @@ fn session_dedups_alpha_equivalent_sources_in_answers() {
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
-    let answers = match result {
-        ExecResult::QueryResult(crate::sggs::QueryResult::Answers(ans)) => ans,
-        other => panic!("expected answers, got {:?}", other),
+    let first = match result {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
     };
-    assert_eq!(answers.len(), 1, "alpha-equivalent sources must dedup answers");
+    assert!(matches!(first, crate::sggs::QueryResult::Answer(_)));
+
+    let next = session
+        .execute_statement(Statement::Directive(Directive::Next))
+        .expect("execute_statement failed");
+    let next = match next {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
+    };
+    assert!(
+        matches!(next, crate::sggs::QueryResult::Exhausted),
+        "alpha-equivalent sources must dedup answers"
+    );
 }
 
 #[test]
@@ -278,13 +302,25 @@ fn session_query_does_not_expose_internal_symbols() {
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
-    let answers = match result {
-        ExecResult::QueryResult(qr) => match qr {
-            crate::sggs::QueryResult::Answers(ans) => ans,
-            other => panic!("expected answers, got {:?}", other),
-        },
+    let mut answers = Vec::new();
+    let mut qr = match result {
+        ExecResult::QueryResult(qr) => qr,
         other => panic!("expected query result, got {:?}", other),
     };
+    loop {
+        match qr {
+            crate::sggs::QueryResult::Answer(ans) => answers.push(ans),
+            crate::sggs::QueryResult::NoAnswers | crate::sggs::QueryResult::Exhausted => break,
+            other => panic!("expected answer or exhaustion, got {:?}", other),
+        }
+        let next = session
+            .execute_statement(Statement::Directive(Directive::Next))
+            .expect("execute_statement failed");
+        qr = match next {
+            ExecResult::QueryResult(qr) => qr,
+            other => panic!("expected query result, got {:?}", other),
+        };
+    }
 
     // Only symbols from the original input (predicate p and constant a) are allowed.
     let mut allowed_consts = std::collections::HashSet::new();
@@ -302,6 +338,12 @@ fn session_query_does_not_expose_internal_symbols() {
             );
         }
     }
+    assert!(
+        answers
+            .iter()
+            .any(|s| { s.lookup(&Var::new("Y")) == Some(&Term::constant("a")) }),
+        "expected projected answer with Y=a"
+    );
     let _ = fs::remove_file(&path);
 }
 
@@ -326,7 +368,7 @@ fn session_query_without_projectable_witness_returns_no_answers() {
         .expect("execute_statement failed");
     match result {
         ExecResult::QueryResult(crate::sggs::QueryResult::NoAnswers) => {}
-        ExecResult::QueryResult(crate::sggs::QueryResult::Answers(ans)) => {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(ans)) => {
             panic!(
                 "expected no answers without projectable witness, got {:?}",
                 ans
@@ -363,9 +405,9 @@ fn session_query_allows_internal_symbols_when_enabled() {
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
-    let answers = match result {
-        ExecResult::QueryResult(crate::sggs::QueryResult::Answers(ans)) => ans,
-        other => panic!("expected answers, got {:?}", other),
+    let answer = match result {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(ans)) => ans,
+        other => panic!("expected answer, got {:?}", other),
     };
 
     // User signature has no constants, so any bound term is internal.
@@ -373,14 +415,21 @@ fn session_query_allows_internal_symbols_when_enabled() {
     let allowed_consts = sig.constants.clone();
     let allowed_funs = sig.functions.clone();
     assert!(
-        answers.iter().any(|s| {
-            s.domain().iter().any(|v| {
-                let t = s.lookup(v).expect("bound var");
-                !term_uses_only_symbols(t, &allowed_consts, &allowed_funs)
-            })
+        answer.domain().iter().any(|v| {
+            let t = answer.lookup(v).expect("bound var");
+            !term_uses_only_symbols(t, &allowed_consts, &allowed_funs)
         }),
         "allow_internal should permit answers with non-user symbols"
     );
+
+    let next = session
+        .execute_statement(Statement::Directive(Directive::Next))
+        .expect("execute_statement failed");
+    let next = match next {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
+    };
+    assert!(matches!(next, crate::sggs::QueryResult::Exhausted));
 
     let _ = fs::remove_file(&path);
 }

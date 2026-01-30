@@ -4,6 +4,7 @@ use crate::normalize::{clausify_statement, clausify_statements};
 use crate::parser::{parse_file, Directive, Statement};
 use crate::sggs::{
     answer_query, answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult,
+    QueryStream,
 };
 use crate::syntax::{Literal, Signature};
 use crate::theory::Theory;
@@ -43,6 +44,7 @@ pub struct Session {
     config: DerivationConfig,
     user_signature: Signature,
     projection_policy: ProjectionPolicy,
+    active_query: Option<QueryStream>,
 }
 
 impl Session {

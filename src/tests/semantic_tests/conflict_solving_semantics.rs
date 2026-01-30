@@ -9,8 +9,8 @@ use super::*;
 
 use crate::constraint::Constraint;
 use crate::sggs::{
-    sggs_extension, sggs_factoring, sggs_left_split, sggs_move, sggs_resolution,
-    ConstrainedClause, ExtensionResult, InitialInterpretation, ResolutionResult, Trail,
+    sggs_extension, sggs_factoring, sggs_left_split, sggs_move, sggs_resolution, ConstrainedClause,
+    ExtensionResult, InitialInterpretation, ResolutionResult, Trail,
 };
 
 #[test]
@@ -162,7 +162,10 @@ fn conflict_solving_chain_with_left_split() {
 
     let res = sggs_resolution(&conflict, &trail2);
     assert!(
-        matches!(res, ResolutionResult::EmptyClause | ResolutionResult::ConflictClause(_)),
+        matches!(
+            res,
+            ResolutionResult::EmptyClause | ResolutionResult::ConflictClause(_)
+        ),
         "left split should enable conflict solving on the isolated intersection"
     );
 }

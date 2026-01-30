@@ -160,8 +160,7 @@ fn assert_conservative_extension(src: &str) {
 fn test_clausify_statement_clause_passthrough() {
     let clause = Clause::new(vec![Literal::pos("p", vec![]), Literal::neg("q", vec![])]);
     let stmt = Statement::Clause(clause.clone());
-    let clauses = sggslog::normalize::clausify_statement(&stmt)
-        .expect("clausify_statement failed");
+    let clauses = sggslog::normalize::clausify_statement(&stmt).expect("clausify_statement failed");
     assert!(
         clauses.iter().any(|c| {
             c.literals.len() == 2
@@ -191,11 +190,15 @@ fn test_clausify_statements_mixed_clause_and_formula() {
     let stmts = parse_file("clause p | ~q\nr -> s").expect("parse_file failed");
     let clauses = clausify_statements(&stmts).expect("clausify_statements failed");
     assert!(
-        clauses.iter().any(|c| clause_has_literal(c, "p", true) && clause_has_literal(c, "q", false)),
+        clauses
+            .iter()
+            .any(|c| clause_has_literal(c, "p", true) && clause_has_literal(c, "q", false)),
         "explicit clause should appear in normalized output"
     );
     assert!(
-        clauses.iter().any(|c| clause_has_literal(c, "r", false) && clause_has_literal(c, "s", true)),
+        clauses
+            .iter()
+            .any(|c| clause_has_literal(c, "r", false) && clause_has_literal(c, "s", true)),
         "implication should yield a clause with ¬r ∨ s (possibly among others)"
     );
 }
@@ -445,9 +448,20 @@ fn test_skolem_functions_fresh_across_statements_with_universals() {
         Term::App(sym, args) => (sym.name.clone(), args.clone()),
         _ => panic!("expected Skolem function in second clause"),
     };
-    assert_ne!(f1.0, f2.0, "Skolem functions should be fresh across statements");
-    assert_eq!(f1.1.len(), 1, "Skolem function should depend on the universal");
-    assert_eq!(f2.1.len(), 1, "Skolem function should depend on the universal");
+    assert_ne!(
+        f1.0, f2.0,
+        "Skolem functions should be fresh across statements"
+    );
+    assert_eq!(
+        f1.1.len(),
+        1,
+        "Skolem function should depend on the universal"
+    );
+    assert_eq!(
+        f2.1.len(),
+        1,
+        "Skolem function should depend on the universal"
+    );
 }
 
 #[test]
@@ -467,4 +481,36 @@ fn test_skolemization_does_not_capture_universals_from_other_statements() {
         sk.1, 0,
         "Skolem symbol should be a constant; universals from other statements are out of scope"
     );
+}
+
+#[test]
+fn test_negated_forall_pushes_negation_and_skolemizes() {
+    // ¬∀X p(X) == ∃X ¬p(X) => Skolem constant, negative literal.
+    let clauses = clausify_all("¬∀X (p X)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
+    assert!(
+        !lit.positive,
+        "negated forall should produce negative literal"
+    );
+    assert!(
+        lit.is_ground(),
+        "existential after negation should skolemize"
+    );
+}
+
+#[test]
+fn test_negated_exists_pushes_negation_to_forall() {
+    // ¬∃X p(X) == ∀X ¬p(X) => negative literal with variable.
+    let clauses = clausify_all("¬∃X (p X)");
+    let clause = find_clause_with_predicates(&clauses, &["p"]);
+    let lit = first_literal_with_predicate(&clause, "p");
+    assert!(
+        !lit.positive,
+        "negated exists should produce negative literal"
+    );
+    match &lit.atom.args[0] {
+        Term::Var(_) => {}
+        _ => panic!("expected variable (universal) after negated exists"),
+    }
 }

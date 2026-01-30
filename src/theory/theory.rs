@@ -521,7 +521,10 @@ mod tests {
         let mut theory = Theory::new();
         theory.add_clause(Clause::new(vec![Literal::pos(
             "P",
-            vec![Term::app("f", vec![Term::app("f", vec![Term::constant("a")])])],
+            vec![Term::app(
+                "f",
+                vec![Term::app("f", vec![Term::constant("a")])],
+            )],
         )]));
         let mut system = RestrainingSystem::default();
         system.rs.push(RewriteRule {
@@ -531,7 +534,10 @@ mod tests {
         let basis = theory.basis(&system);
         assert!(basis.contains(&Atom::new(
             "P",
-            vec![Term::app("f", vec![Term::app("f", vec![Term::constant("a")])])]
+            vec![Term::app(
+                "f",
+                vec![Term::app("f", vec![Term::constant("a")])]
+            )]
         )));
         assert!(basis.contains(&Atom::new(
             "P",

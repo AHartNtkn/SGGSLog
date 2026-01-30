@@ -38,6 +38,9 @@ fn extension_on_satisfiable_theory() {
         ExtensionResult::Conflict(_) => {
             panic!("[BP17] Satisfiable theory should not immediately conflict");
         }
+        ExtensionResult::Critical { .. } => {
+            // Critical extension is also a valid extension step.
+        }
     }
 }
 
@@ -172,10 +175,14 @@ fn extension_requires_side_premises_in_disjoint_prefix() {
 /// "Let C ∈ S be a clause such that L1,…,Ln (n ≥ 0) are all its I-true literals."
 /// (SGGSdpFOL, Definition 1)
 ///
-/// Requirement: when n=0 there are no side premises; any instance of C may be used
-/// for extension, so the test only checks it is an instance (not necessarily most general).
+/// Requirement: when n=0 there are no side premises; SGGS still uses a most-general
+/// semantic falsifier, so variables should not be over-instantiated under sign-based I.
+/// Source: bonacina2016.pdf, Definition 12.
+/// Quote (Def. 12): "There is a most general semantic falsifier β of (C\\{L1,…,Ln})α"
+/// and "As a special case, when n=0, there are no side premises ... [SGGS-extension]
+/// adds ... I-all-false instances of input clauses (α is empty and β is not)."
 #[test]
-fn extension_allows_any_instance_when_n0() {
+fn extension_n0_uses_most_general_falsifier() {
     let trail = Trail::new(InitialInterpretation::AllNegative);
     let clause = Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]);
     let theory = theory_from_clauses(vec![clause.clone()]);
@@ -188,6 +195,10 @@ fn extension_allows_any_instance_when_n0() {
                 UnifyResult::Success(_) => {}
                 _ => panic!("extended literal must be an instance of the premise"),
             }
+            assert!(
+                !lit.is_ground(),
+                "most-general falsifier should not ground variables"
+            );
         }
         other => panic!("Expected extension with n=0, got {:?}", other),
     }
@@ -207,7 +218,10 @@ fn extension_conflict_via_extension_substitution() {
     ));
     // I-true selected literal: ¬P(f(a))
     trail.push(ConstrainedClause::new(
-        Clause::new(vec![Literal::neg("P", vec![Term::app("f", vec![Term::constant("a")])])]),
+        Clause::new(vec![Literal::neg(
+            "P",
+            vec![Term::app("f", vec![Term::constant("a")])],
+        )]),
         0,
     ));
 
@@ -219,8 +233,7 @@ fn extension_conflict_via_extension_substitution() {
     match sggs_extension(&trail, &theory) {
         ExtensionResult::Conflict(cc) => {
             // The instantiated clause should be ¬P(a) ∨ P(f(a)).
-            let lits: std::collections::HashSet<_> =
-                cc.clause.literals.iter().cloned().collect();
+            let lits: std::collections::HashSet<_> = cc.clause.literals.iter().cloned().collect();
             let expected: std::collections::HashSet<_> = vec![
                 Literal::neg("P", vec![Term::constant("a")]),
                 Literal::pos("P", vec![Term::app("f", vec![Term::constant("a")])]),
@@ -233,5 +246,78 @@ fn extension_conflict_via_extension_substitution() {
             "Expected conflict via extension substitution, got {:?}",
             other
         ),
+    }
+}
+
+#[test]
+fn extension_non_conflicting_selects_literal_with_proper_instances() {
+    // Def. 20: choose an I-false literal with proper instances when possible.
+    // Source: bonacina2016.pdf, Definition 20.
+    // Quote: "provided pcgi(A ⊲ L , Γ A ⊲ E[L]) ≠ ∅"
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    // I-all-true clause in dp(Γ) with selected ¬R(a).
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("R", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("R", vec![Term::var("X")]),
+        Literal::pos("S", vec![Term::var("X")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => {
+            // R(a) intersects ¬R(a), S(a) does not, so S(a) should be selected.
+            assert_eq!(
+                cc.selected_literal(),
+                &Literal::pos("S", vec![Term::constant("a")])
+            );
+        }
+        other => panic!("Expected non-conflicting extension, got {:?}", other),
+    }
+}
+
+#[test]
+fn extension_critical_replaces_clause_when_only_prefix_allows_proper_instances() {
+    // Def. 21: when an extension is possible only w.r.t. a proper prefix, it is critical.
+    // Source: bonacina2016.pdf, Definition 21.
+    // Quote: "the SGGS-extension inference rule replaces J ⊲ N[O] with A ⊲ E[L]"
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    // This I-all-true clause blocks R(a) in the full trail.
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("R", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("R", vec![Term::var("X")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Critical {
+            replace_index,
+            clause,
+        } => {
+            assert_eq!(
+                replace_index, 1,
+                "critical extension should replace the blocker"
+            );
+            assert_eq!(
+                clause.selected_literal(),
+                &Literal::pos("R", vec![Term::constant("a")])
+            );
+        }
+        other => panic!("Expected critical extension, got {:?}", other),
     }
 }

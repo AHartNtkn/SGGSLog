@@ -42,12 +42,23 @@ fn test_skolemization_respects_shadowing_scope() {
     let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
         Term::App(_, args) => {
-            assert_eq!(args.len(), 1, "Skolem function should depend on one universal");
-            assert!(matches!(&args[0], Term::Var(_)), "argument should be a variable");
+            assert_eq!(
+                args.len(),
+                1,
+                "Skolem function should depend on one universal"
+            );
+            assert!(
+                matches!(&args[0], Term::Var(_)),
+                "argument should be a variable"
+            );
         }
         _ => panic!("expected Skolem function application"),
     }
-    assert_eq!(clause.variables().len(), 1, "only the outer universal should remain");
+    assert_eq!(
+        clause.variables().len(),
+        1,
+        "only the outer universal should remain"
+    );
 }
 
 #[test]
@@ -71,5 +82,8 @@ fn test_skolem_constant_shared_across_conjunction() {
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
         _ => panic!("expected Skolem constant"),
     };
-    assert_eq!(p_sk, q_sk, "same existential should yield same Skolem symbol");
+    assert_eq!(
+        p_sk, q_sk,
+        "same existential should yield same Skolem symbol"
+    );
 }

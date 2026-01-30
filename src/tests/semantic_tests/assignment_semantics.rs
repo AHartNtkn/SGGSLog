@@ -5,11 +5,11 @@ use super::*;
 // =============================================================================
 //
 // Reference: [BP16a] Definitions 8-9 (Dependence and Assignment)
-use crate::constraint::Constraint;
-use crate::sggs::{compute_assignments, ConstrainedClause, InitialInterpretation, Trail};
-use crate::sggs::sggs_left_split;
 use crate::constraint::AtomicConstraint;
+use crate::constraint::Constraint;
 use crate::sggs::sggs_factoring;
+use crate::sggs::sggs_left_split;
+use crate::sggs::{compute_assignments, ConstrainedClause, InitialInterpretation, Trail};
 
 #[test]
 fn assignment_maps_i_true_literals_to_justification() {
@@ -67,7 +67,9 @@ fn assignment_selected_i_true_is_rightmost_dependency() {
     let assigns = compute_assignments(&trail);
     let j = 2; // clause index of the I-all-true clause
     let selected_idx = 0;
-    let selected_assigned = assigns.assigned_to(j, selected_idx).expect("selected assigned");
+    let selected_assigned = assigns
+        .assigned_to(j, selected_idx)
+        .expect("selected assigned");
     // Condition (4) Def. 9: selected I-true literal assigned rightmost among assignments in clause.
     let mut max_assigned = selected_assigned;
     for lit_idx in 0..trail.clauses()[j].clause.literals.len() {

@@ -4,7 +4,9 @@ use super::*;
 // FAIRNESS PROGRESS REQUIREMENTS
 // =============================================================================
 
-use crate::sggs::{applicable_inferences, next_inference, InferenceRule, InitialInterpretation, Trail};
+use crate::sggs::{
+    applicable_inferences, next_inference, InferenceRule, InitialInterpretation, Trail,
+};
 
 /// "All conflicting SGGS-extensions are followed right away by conflict solving."
 /// (SGGSdpFOL, fairness paragraph)

@@ -8,6 +8,11 @@ use crate::theory::Theory;
 pub enum ExtensionResult {
     /// Successfully extended trail
     Extended(ConstrainedClause),
+    /// Critical extension: replace a clause at the given index
+    Critical {
+        replace_index: usize,
+        clause: ConstrainedClause,
+    },
     /// No extension possible (trail is complete)
     NoExtension,
     /// Found conflict during extension
@@ -128,7 +133,11 @@ mod tests {
     #[test]
     fn test_extension_with_no_i_true_literals_non_ground() {
         // Source: SGGSdpFOL.pdf, Definition 1 (SGGS-extension scheme), n ≥ 0.
-        // With no I-true literals, the extension clause can be a non-ground instance.
+        // With no I-true literals, the extension uses a most-general semantic falsifier.
+        // Source: bonacina2016.pdf, Definition 12.
+        // Quote: "There is a most general semantic falsifier β of (C\\{L1,…,Ln})α"
+        // and "As a special case, when n=0, there are no side premises ... (α is empty and β is not)."
+        // Under I⁻, this should not over-instantiate variables.
         let trail = Trail::new(InitialInterpretation::AllNegative);
 
         let mut theory = Theory::new();
@@ -143,6 +152,10 @@ mod tests {
                 assert!(
                     crate::unify::unify_literals(lit, &clause.literals[0]).is_success(),
                     "extended literal should be an instance of the original"
+                );
+                assert!(
+                    !lit.is_ground(),
+                    "most-general falsifier should not ground variables"
                 );
             }
             other => panic!("Expected non-ground extension with n=0, got {:?}", other),

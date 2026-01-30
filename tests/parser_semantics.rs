@@ -81,10 +81,7 @@ fn test_nested_quantifiers_parse_as_nested() {
                 match *body {
                     Formula::Atom(atom) => {
                         assert_eq!(atom.predicate, "p");
-                        assert_eq!(
-                            atom.args,
-                            vec![Term::var("X"), Term::var("Y")]
-                        );
+                        assert_eq!(atom.args, vec![Term::var("X"), Term::var("Y")]);
                     }
                     _ => panic!("expected atom under nested quantifiers"),
                 }
@@ -198,6 +195,26 @@ fn test_directive_parsing_load_and_set() {
             "10".to_string()
         ))
     );
+}
+
+#[test]
+fn test_directive_parsing_next() {
+    let stmts = parse_file(":next").expect("parse_file failed");
+    assert_eq!(stmts.len(), 1);
+    assert_eq!(
+        stmts[0],
+        Statement::Directive(sggslog::parser::Directive::Next)
+    );
+}
+
+#[test]
+fn test_parenthesized_function_application() {
+    let f = single_formula("p (f a)");
+    let expected = Formula::atom(Atom::new(
+        "p",
+        vec![Term::app("f", vec![Term::constant("a")])],
+    ));
+    assert_eq!(f, expected);
 }
 
 #[test]

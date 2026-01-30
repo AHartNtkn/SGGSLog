@@ -77,7 +77,10 @@ fn trail_prefix_takes_first_n_clauses() {
 
     let prefix1 = trail.prefix(1);
     assert_eq!(prefix1.len(), 1);
-    assert_eq!(prefix1.clauses()[0].selected_literal(), c1.selected_literal());
+    assert_eq!(
+        prefix1.clauses()[0].selected_literal(),
+        c1.selected_literal()
+    );
 }
 
 #[test]

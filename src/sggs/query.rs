@@ -43,10 +43,12 @@ impl Query {
 /// Result of answering a query (model-based).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryResult {
-    /// One or more answers (substitutions) were found.
-    Answers(Vec<Substitution>),
-    /// No answers exist in the constructed model.
+    /// A single answer (substitution) was found.
+    Answer(Substitution),
+    /// No answers exist for this query (first result).
     NoAnswers,
+    /// No more answers remain (query exhausted).
+    Exhausted,
     /// Resource limit reached before completion.
     ResourceLimit,
 }
@@ -60,21 +62,73 @@ pub enum ProjectionPolicy {
     AllowInternal,
 }
 
+/// Streaming query evaluation state.
+#[derive(Debug, Clone)]
+pub struct QueryStream {
+    theory: Theory,
+    query: Query,
+    config: DerivationConfig,
+    user_signature: Option<Signature>,
+    policy: ProjectionPolicy,
+    seen_answer: bool,
+    exhausted: bool,
+}
+
+impl QueryStream {
+    pub fn new(
+        theory: Theory,
+        query: Query,
+        config: DerivationConfig,
+        user_signature: Option<Signature>,
+        policy: ProjectionPolicy,
+    ) -> Self {
+        QueryStream {
+            theory,
+            query,
+            config,
+            user_signature,
+            policy,
+            seen_answer: false,
+            exhausted: false,
+        }
+    }
+
+    /// Retrieve the next answer in the stream.
+    pub fn next(&mut self) -> QueryResult {
+        if self.exhausted {
+            return QueryResult::Exhausted;
+        }
+        todo!("QueryStream::next implementation")
+    }
+}
+
 /// Answer a query against a theory using SGGS model construction.
 ///
 /// Semantics: build (or approximate) a model with SGGS, then return substitutions
 /// that make the query true in that model.
-pub fn answer_query(_theory: &Theory, _query: &Query, _config: DerivationConfig) -> QueryResult {
-    todo!("answer_query implementation")
+pub fn answer_query(theory: &Theory, query: &Query, config: DerivationConfig) -> QueryStream {
+    QueryStream::new(
+        theory.clone(),
+        query.clone(),
+        config,
+        None,
+        ProjectionPolicy::OnlyUserSymbols,
+    )
 }
 
 /// Answer a query and project substitutions to a user signature.
 pub fn answer_query_projected(
-    _theory: &Theory,
-    _query: &Query,
-    _config: DerivationConfig,
-    _user_signature: &Signature,
-    _policy: ProjectionPolicy,
-) -> QueryResult {
-    todo!("answer_query_projected implementation")
+    theory: &Theory,
+    query: &Query,
+    config: DerivationConfig,
+    user_signature: &Signature,
+    policy: ProjectionPolicy,
+) -> QueryStream {
+    QueryStream::new(
+        theory.clone(),
+        query.clone(),
+        config,
+        Some(user_signature.clone()),
+        policy,
+    )
 }

@@ -8,10 +8,7 @@ fn test_clause_keyword_parses_to_clause_statement_ascii() {
     assert_eq!(stmts.len(), 1);
     match &stmts[0] {
         Statement::Clause(c) => {
-            let expected = Clause::new(vec![
-                Literal::pos("p", vec![]),
-                Literal::neg("q", vec![]),
-            ]);
+            let expected = Clause::new(vec![Literal::pos("p", vec![]), Literal::neg("q", vec![])]);
             assert_eq!(c.literals.len(), expected.literals.len());
             for lit in &expected.literals {
                 assert!(c.literals.contains(lit));
@@ -27,10 +24,7 @@ fn test_clause_keyword_parses_to_clause_statement_unicode() {
     assert_eq!(stmts.len(), 1);
     match &stmts[0] {
         Statement::Clause(c) => {
-            let expected = Clause::new(vec![
-                Literal::pos("p", vec![]),
-                Literal::neg("q", vec![]),
-            ]);
+            let expected = Clause::new(vec![Literal::pos("p", vec![]), Literal::neg("q", vec![])]);
             assert_eq!(c.literals.len(), expected.literals.len());
             for lit in &expected.literals {
                 assert!(c.literals.contains(lit));

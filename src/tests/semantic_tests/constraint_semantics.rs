@@ -141,7 +141,10 @@ fn constraint_simplify_with_true_false_identities() {
     ));
     assert_eq!(c.clone().and(Constraint::True).simplify(), c);
     assert_eq!(c.clone().or(Constraint::False).simplify(), c);
-    assert_eq!(c.clone().and(Constraint::False).simplify(), Constraint::False);
+    assert_eq!(
+        c.clone().and(Constraint::False).simplify(),
+        Constraint::False
+    );
     assert_eq!(c.clone().or(Constraint::True).simplify(), Constraint::True);
 }
 

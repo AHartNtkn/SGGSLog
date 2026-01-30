@@ -15,3 +15,11 @@ Termination guarantees are part of the API only for SGGS-decidable fragments (e.
 String literals in directives are simple double-quoted paths; escape sequences are not required by the API.
 
 Variable names are scoped per clause; reusing the same variable name across different clauses is allowed and carries no cross-clause identity.
+
+Queries are answered against the SGGS-constructed model (not by refutation), and user-visible answers are deduplicated (including duplicates arising from alpha-equivalent clauses). Query answers are streamed: a query returns the first answer (if any), and subsequent answers are retrieved explicitly via `:next`. When no more answers remain, the user is told the query is exhausted.
+
+Projection of answers is part of the external API. By default, only user-provided symbols may appear in answers; internal symbols (e.g., Skolem symbols) are filtered. A projection mode that allows internal symbols is supported. When projection is `only_user_symbols`, streamed answers are restricted to terms built from the user signature.
+
+Negative-only queries (variables appearing only in negated literals) are allowed. When projection is `only_user_symbols`, such queries stream answers over the user signature (and may be infinite).
+
+Directives include `:load "path"`, `:set key value`, and `:next` (to retrieve the next answer to the most recent query). Supported keys include `max_steps` and `projection` (values: `only_user_symbols` or `allow_internal`). `initial_interp` is not supported for end users.

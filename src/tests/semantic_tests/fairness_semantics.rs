@@ -50,7 +50,8 @@ fn fairness_reports_splitting_applicable_on_intersection() {
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
     let applicable = applicable_inferences(&trail, &theory);
     assert!(
-        applicable.contains(&InferenceRule::Splitting) || applicable.contains(&InferenceRule::Deletion),
+        applicable.contains(&InferenceRule::Splitting)
+            || applicable.contains(&InferenceRule::Deletion),
         "splitting or deletion should be applicable when selected literals intersect"
     );
     assert_next_is_applicable(&trail, &theory);
@@ -73,6 +74,25 @@ fn fairness_reports_deletion_applicable_when_disposable_exists() {
     assert!(
         applicable.contains(&InferenceRule::Deletion),
         "deletion should be applicable when a disposable clause exists"
+    );
+    assert_next_is_applicable(&trail, &theory);
+}
+
+#[test]
+fn fairness_reports_deletion_applicable_when_prefix_satisfies_clause() {
+    // Disposable by left-prefix satisfaction (Bonacina 2016, Example 2).
+    // Source: SGGSdpFOL.pdf, fairness paragraph.
+    // Quote: "SGGS-deletion is applied eagerly."
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
+    trail.push(unit(Literal::neg("Q", vec![Term::var("x")])));
+    trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("R", vec![])])]);
+    let applicable = applicable_inferences(&trail, &theory);
+    assert!(
+        applicable.contains(&InferenceRule::Deletion),
+        "deletion should be applicable for a clause satisfied by its prefix"
     );
     assert_next_is_applicable(&trail, &theory);
 }

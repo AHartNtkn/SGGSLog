@@ -22,4 +22,6 @@ pub enum Directive {
     Load(String),
     /// Set a configuration option
     Set(String, String),
+    /// Request the next answer in the current query stream
+    Next,
 }

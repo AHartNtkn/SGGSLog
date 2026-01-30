@@ -190,4 +190,15 @@ mod tests {
         let clause = Clause::new(vec![Literal::neg("p", vec![Term::constant("a")])]);
         assert!(interp.semantic_falsifier(&clause).is_none());
     }
+
+    #[test]
+    fn test_semantic_falsifier_all_positive_all_negative_clause() {
+        // Under I⁺, an all-negative clause is uniformly false; falsifier should be empty.
+        let interp = InitialInterpretation::AllPositive;
+        let clause = Clause::new(vec![Literal::neg("p", vec![Term::var("X")])]);
+        let sigma = interp
+            .semantic_falsifier(&clause)
+            .expect("expected falsifier");
+        assert!(sigma.domain().is_empty());
+    }
 }

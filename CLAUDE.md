@@ -56,3 +56,4 @@ Tests are organized as:
 - Unit tests within each module (`src/*/mod.rs`)
 - Semantic tests in `src/tests/`
 - Integration tests in `tests/` (parser semantics, SGGS properties, theory semantics)
+

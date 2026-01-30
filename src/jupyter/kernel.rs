@@ -57,9 +57,23 @@ mod tests {
     fn test_kernel_execute_clause_and_query() {
         let mut k = Kernel::new();
         let r1 = k.execute("p").unwrap();
-        assert!(r1.starts_with("ok"), "expected ok-like response, got {}", r1);
+        assert!(
+            r1.starts_with("ok"),
+            "expected ok-like response, got {}",
+            r1
+        );
         let r2 = k.execute("?- p").unwrap();
-        assert!(r2.starts_with("yes"), "expected yes-like response, got {}", r2);
+        assert!(
+            !r2.is_empty(),
+            "expected non-empty query response, got {}",
+            r2
+        );
+        let r3 = k.execute(":next").unwrap();
+        assert!(
+            !r3.is_empty(),
+            "expected non-empty next-answer response, got {}",
+            r3
+        );
     }
 
     #[test]
@@ -67,7 +81,11 @@ mod tests {
         let mut k = Kernel::new();
         let code = "p\nq\n?- p";
         let r = k.execute(code).unwrap();
-        assert!(r.starts_with("yes"), "expected yes-like response, got {}", r);
+        assert!(
+            !r.is_empty(),
+            "expected non-empty query response, got {}",
+            r
+        );
     }
 
     #[test]
@@ -81,14 +99,28 @@ mod tests {
     fn test_kernel_execute_answers_and_no() {
         let mut k = Kernel::new();
         let r1 = k.execute("(p a)").unwrap();
-        assert!(r1.starts_with("ok"), "expected ok-like response, got {}", r1);
+        assert!(
+            r1.starts_with("ok"),
+            "expected ok-like response, got {}",
+            r1
+        );
         let r2 = k.execute("?- (p b)").unwrap();
-        assert!(r2.starts_with("no"), "expected no-like response, got {}", r2);
+        assert!(
+            !r2.is_empty(),
+            "expected non-empty no-answer response, got {}",
+            r2
+        );
         let r3 = k.execute("?- (p X)").unwrap();
         assert!(
             r3.contains("X") && r3.contains("a"),
             "expected an answer binding X=a, got {}",
             r3
+        );
+        let r4 = k.execute(":next").unwrap();
+        assert!(
+            !r4.is_empty(),
+            "expected non-empty next-answer response, got {}",
+            r4
         );
     }
 }

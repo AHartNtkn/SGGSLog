@@ -26,7 +26,9 @@ pub use factoring::sggs_factoring;
 pub use interpretation::{InitialInterpretation, TruthValue};
 pub use left_split::sggs_left_split;
 pub use move_op::{sggs_move, MoveError};
-pub use query::{answer_query, answer_query_projected, ProjectionPolicy, Query, QueryResult};
+pub use query::{
+    answer_query, answer_query_projected, ProjectionPolicy, Query, QueryResult, QueryStream,
+};
 pub use resolution::{sggs_resolution, ResolutionResult};
 pub use splitting::{sggs_splitting, sggs_splitting_on, SplitResult};
 pub use trail::{PartialInterpretation, Trail, TrailError, TrailInterpretation};
