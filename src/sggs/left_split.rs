@@ -1,0 +1,63 @@
+//! SGGS Left-Splitting (l-split) for conflict solving.
+
+use super::{ConstrainedClause, SplitResult};
+
+/// SGGS left-splitting: split a clause using a conflicting clause to isolate intersections.
+///
+/// Returns a partition of the split clause if left-splitting applies.
+pub fn sggs_left_split(
+    _clause: &ConstrainedClause,
+    _other: &ConstrainedClause,
+) -> Option<SplitResult> {
+    todo!("sggs_left_split implementation")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constraint::Constraint;
+    use crate::syntax::{Clause, Literal, Term};
+
+    #[test]
+    fn test_left_split_intersection() {
+        // Source: SGGSdpFOL, rule l-split (Fig. 2).
+        let clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos(
+                "P",
+                vec![Term::var("x"), Term::var("y")],
+            )]),
+            Constraint::True,
+            0,
+        );
+        let other = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos(
+                "P",
+                vec![
+                    Term::app("f", vec![Term::var("w")]),
+                    Term::app("g", vec![Term::var("z")]),
+                ],
+            )]),
+            Constraint::True,
+            0,
+        );
+
+        let result = sggs_left_split(&clause, &other).expect("expected left split");
+        assert_eq!(result.parts.len(), 3);
+    }
+
+    #[test]
+    fn test_left_split_no_intersection() {
+        let clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+            Constraint::True,
+            0,
+        );
+        let other = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("Q", vec![Term::var("y")])]),
+            Constraint::True,
+            0,
+        );
+
+        assert!(sggs_left_split(&clause, &other).is_none());
+    }
+}

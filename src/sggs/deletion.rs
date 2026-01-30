@@ -94,4 +94,29 @@ mod tests {
         assert!(is_disposable(clause1, &trail));
         assert!(is_disposable(clause2, &trail));
     }
+
+    #[test]
+    fn test_sggs_deletion_removes_disposable_clause() {
+        // Source: bonacina2016.pdf, Example 2 (SGGS-deletion removes disposable clauses).
+        let mut trail = Trail::new(crate::sggs::InitialInterpretation::AllNegative);
+        trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
+        trail.push(unit(Literal::neg("Q", vec![Term::var("x")])));
+        trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
+
+        sggs_deletion(&mut trail);
+
+        assert_eq!(trail.clauses().len(), 2);
+        let count_p = trail
+            .clauses()
+            .iter()
+            .filter(|c| c.selected_literal() == &Literal::pos("P", vec![Term::var("x")]))
+            .count();
+        let count_not_q = trail
+            .clauses()
+            .iter()
+            .filter(|c| c.selected_literal() == &Literal::neg("Q", vec![Term::var("x")]))
+            .count();
+        assert_eq!(count_p, 1);
+        assert_eq!(count_not_q, 1);
+    }
 }

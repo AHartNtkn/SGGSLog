@@ -49,6 +49,17 @@ impl Constraint {
     pub fn standardize(&self) -> Constraint {
         todo!("Constraint::standardize implementation")
     }
+
+    /// Compute the intersection of two constraints.
+    /// Returns a constraint that characterizes instances satisfying both.
+    pub fn intersect(&self, other: &Constraint) -> Constraint {
+        todo!("Constraint::intersect implementation")
+    }
+
+    /// Check if two constraints have a non-empty intersection.
+    pub fn intersects(&self, other: &Constraint) -> bool {
+        todo!("Constraint::intersects implementation")
+    }
 }
 
 #[cfg(test)]

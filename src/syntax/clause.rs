@@ -75,6 +75,26 @@ impl Clause {
     pub fn len(&self) -> usize {
         self.literals.len()
     }
+
+    /// Check if this clause is positively ground-preserving (BW20 Def. 4).
+    pub fn is_positively_ground_preserving(&self) -> bool {
+        todo!("Clause::is_positively_ground_preserving implementation")
+    }
+
+    /// Check if this clause is negatively ground-preserving (BW20 Def. 4).
+    pub fn is_negatively_ground_preserving(&self) -> bool {
+        todo!("Clause::is_negatively_ground_preserving implementation")
+    }
+
+    /// Check if this clause is ground-preserving (positively or negatively).
+    pub fn is_ground_preserving(&self) -> bool {
+        todo!("Clause::is_ground_preserving implementation")
+    }
+
+    /// Check if this clause is restrained (BW20 Def. 6).
+    pub fn is_restrained(&self) -> bool {
+        todo!("Clause::is_restrained implementation")
+    }
 }
 
 #[cfg(test)]

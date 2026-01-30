@@ -601,7 +601,7 @@ mod trail_semantics {
     // -------------------------------------------------------------------------
     // Property: Disjoint prefix
     //
-    // Reference: [BP16a] Definition 8 - Disjoint Prefix
+    // Reference: [BP16a] Definition 5 - Disjoint Prefix
     // "The disjoint prefix is the maximal prefix where no two selected literals
     // have unifiable atoms."
     //
@@ -628,15 +628,13 @@ mod trail_semantics {
     // -------------------------------------------------------------------------
     // Property: Conflict clause definition
     //
-    // Reference: [BP16a] Definition 11 - Conflict Clause
-    // "A conflict clause has all its literals uniformly false in I[Γ]."
-    //
-    // [BW20] Definition 1: "A clause C is a conflict clause if all literals
-    // of C are uniformly false in the trail interpretation."
+    // Reference: [BW20] Definition 1: "A clause C is a conflict clause if all
+    // literals of C are uniformly false in the trail interpretation."
+    // (Uniform falsity is defined earlier in [BP16a], Section 2.)
     // -------------------------------------------------------------------------
     #[test]
     fn conflict_clause_all_literals_false() {
-        // [BP16a] Def 11, [BW20] Def 1: Conflict = all literals uniformly false
+        // [BW20] Def 1: Conflict = all literals uniformly false
         let trail = Trail::new(InitialInterpretation::AllNegative);
         let interp = trail.interpretation();
         // Under I⁻ with empty trail, all positive literals are uniformly false
@@ -652,7 +650,7 @@ mod trail_semantics {
     }
     #[test]
     fn non_conflict_has_satisfiable_literal() {
-        // [BP16a] Def 11: Clause with I-true literal is not a conflict
+        // [BW20] Def 1: Clause with an I-true literal is not a conflict
         let trail = Trail::new(InitialInterpretation::AllNegative);
         let interp = trail.interpretation();
         // Negative literal is I-true under I⁻
@@ -665,6 +663,56 @@ mod trail_semantics {
             !constrained.is_conflict(&interp),
             "[BP16a] Clause with I-true literal cannot be conflict"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Property: I-false selected literals are enumerated
+    //
+    // Reference: [BP17] Definition 4 (extension side premises are I-false)
+    // -------------------------------------------------------------------------
+    #[test]
+    fn i_false_selected_reports_only_i_false_literals() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        let c1 = ConstrainedClause::new(
+            Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]),
+            0,
+        );
+        let c2 = ConstrainedClause::new(
+            Clause::new(vec![Literal::neg("q", vec![Term::constant("b")])]),
+            0,
+        );
+        trail.push(c1);
+        trail.push(c2);
+
+        let interp = trail.interpretation();
+        let i_false = interp.i_false_selected();
+        let indices: Vec<usize> = i_false.iter().map(|(idx, _)| *idx).collect();
+
+        assert!(indices.contains(&0), "I-false selected literal should be reported");
+        assert!(
+            !indices.contains(&1),
+            "I-true selected literal should not be reported"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Property: Conflict detection on the trail
+    //
+    // Reference: [BW20] Definition 1 (conflict clause)
+    // -------------------------------------------------------------------------
+    #[test]
+    fn find_conflict_detects_uniformly_false_clause() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        trail.push(ConstrainedClause::new(
+            Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]),
+            0,
+        ));
+        trail.push(ConstrainedClause::new(
+            Clause::new(vec![Literal::neg("p", vec![Term::constant("a")])]),
+            0,
+        ));
+
+        assert_eq!(trail.find_conflict(), Some(1));
     }
 }
 // =============================================================================
@@ -894,27 +942,351 @@ mod completeness_semantics {
 // SGGS RESOLUTION SEMANTIC PROPERTIES
 // =============================================================================
 //
-// Reference: [BP17] Definition 6 - SGGS-Resolution
+// Reference: SGGSdpFOL Definition 2 (SGGS-Resolution)
 // "SGGS-resolution resolves a conflict clause with justifications from the
 // trail's disjoint prefix."
 //
-// Reference: [BP16a] Section 5 - Conflict Explanation
+// Reference: [BP17] Section 5 - Conflict Explanation
 // "Resolution is used to explain conflicts and derive lemmas."
 mod resolution_semantics {
     use super::*;
-    use crate::sggs::{ConstrainedClause, InitialInterpretation, Trail};
+    use crate::sggs::{sggs_resolution, ConstrainedClause, InitialInterpretation, ResolutionResult, Trail};
     #[test]
-    fn resolution_reduces_conflict() {
-        // [BP17] Def 6: Resolution explains conflicts
-        let _trail = Trail::new(InitialInterpretation::AllNegative);
-        let _conflict = ConstrainedClause::new(
+    fn resolution_preserves_conflict() {
+        // [BP17] Def 6: Resolution explains conflicts while preserving conflict status.
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        let left = ConstrainedClause::new(
+            Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+            0,
+        );
+        trail.push(left);
+
+        let conflict = ConstrainedClause::new(
             Clause::new(vec![
-                Literal::pos("p", vec![]),
-                Literal::pos("q", vec![]),
+                Literal::pos("P", vec![Term::constant("a")]),
+                Literal::pos("Q", vec![Term::constant("a")]),
             ]),
             0,
         );
-        // [BP16a] Resolution with trail justifications should explain the conflict
+        trail.push(conflict.clone());
+
+        match sggs_resolution(&conflict, &trail) {
+            ResolutionResult::Resolvent(res) => {
+                let interp = trail.interpretation();
+                assert!(res.is_conflict(&interp));
+            }
+            other => panic!("Expected resolvent, got {:?}", other),
+        }
+    }
+}
+// =============================================================================
+// CONSTRAINT SEMANTIC PROPERTIES
+// =============================================================================
+//
+// Reference: [BP17] Definition 1 (Constraint, standard form)
+mod constraint_semantics {
+    use super::*;
+    use crate::constraint::{AtomicConstraint, Constraint};
+
+    #[test]
+    fn standardize_eliminates_identical_and_root_equals() {
+        // Standard form contains only x ≠ y and top(x) ≠ f atoms.
+        let c = Constraint::Or(
+            Box::new(Constraint::Atomic(AtomicConstraint::RootNotEquals(
+                Term::var("x"),
+                "f".to_string(),
+            ))),
+            Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+                Term::var("x"),
+                Term::var("y"),
+            ))),
+        );
+        let std = c.standardize();
+
+        let mut has_identical = false;
+        let mut has_root_equals = false;
+        fn walk(c: &Constraint, hi: &mut bool, hr: &mut bool) {
+            match c {
+                Constraint::Atomic(AtomicConstraint::Identical(_, _)) => *hi = true,
+                Constraint::Atomic(AtomicConstraint::RootEquals(_, _)) => *hr = true,
+                Constraint::And(a, b) | Constraint::Or(a, b) => {
+                    walk(a, hi, hr);
+                    walk(b, hi, hr);
+                }
+                Constraint::Not(inner) => walk(inner, hi, hr),
+                _ => {}
+            }
+        }
+        walk(&std, &mut has_identical, &mut has_root_equals);
+        assert!(!has_identical, "standard form should not contain Identical");
+        assert!(!has_root_equals, "standard form should not contain RootEquals");
+    }
+
+    #[test]
+    fn constraint_satisfiable_examples() {
+        // x ≠ x is unsatisfiable.
+        let c1 = Constraint::Atomic(AtomicConstraint::NotIdentical(
+            Term::var("x"),
+            Term::var("x"),
+        ));
+        assert!(!c1.is_satisfiable());
+
+        // top(f(a)) ≠ f is unsatisfiable.
+        let c2 = Constraint::Atomic(AtomicConstraint::RootNotEquals(
+            Term::app("f", vec![Term::constant("a")]),
+            "f".to_string(),
+        ));
+        assert!(!c2.is_satisfiable());
+    }
+
+    #[test]
+    fn constraint_intersection_basic() {
+        let c1 = Constraint::Atomic(AtomicConstraint::NotIdentical(
+            Term::var("x"),
+            Term::var("y"),
+        ));
+        let c2 = Constraint::Atomic(AtomicConstraint::RootNotEquals(
+            Term::var("x"),
+            "f".to_string(),
+        ));
+        let inter = c1.intersect(&c2);
+        let expected = Constraint::And(Box::new(c1.clone()), Box::new(c2.clone()));
+        assert_eq!(inter, expected);
+        assert!(inter.is_satisfiable());
+    }
+
+    #[test]
+    fn constraint_intersects_false_when_unsat() {
+        let c1 = Constraint::Atomic(AtomicConstraint::NotIdentical(
+            Term::var("x"),
+            Term::var("x"),
+        ));
+        assert!(!c1.intersects(&Constraint::True));
+    }
+}
+// =============================================================================
+// ASSIGNMENT SEMANTIC PROPERTIES
+// =============================================================================
+//
+// Reference: [BP16a] Definitions 8-9 (Dependence and Assignment)
+mod assignment_semantics {
+    use super::*;
+    use crate::constraint::Constraint;
+    use crate::sggs::{compute_assignments, ConstrainedClause, InitialInterpretation, Trail};
+
+    #[test]
+    fn assignment_maps_i_true_literals_to_justification() {
+        // Under I⁻: P(x) is selected (I-false), so ¬P(f(y)) depends on it.
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        let c1 = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+            Constraint::True,
+            0,
+        );
+        let c2 = ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::neg("P", vec![Term::app("f", vec![Term::var("y")])]),
+                Literal::pos("Q", vec![Term::var("y")]),
+            ]),
+            Constraint::True,
+            1,
+        );
+        trail.push(c1);
+        trail.push(c2);
+
+        let assigns = compute_assignments(&trail);
+        let lit_idx = 0; // ¬P(f(y))
+        let assigned = assigns.assigned_to(1, lit_idx);
+        assert_eq!(assigned, Some(0));
+    }
+}
+// =============================================================================
+// FRAGMENT DETECTION (DECIDABLE FRAGMENTS)
+// =============================================================================
+//
+// Reference: [BW20] Definitions 4 and 6 (ground-preserving, restrained)
+mod fragment_semantics {
+    use super::*;
+
+    #[test]
+    fn ground_preserving_check() {
+        // Datalog-style clause: Var(C+) ⊆ Var(C-)
+        let clause = Clause::new(vec![
+            Literal::neg("edge", vec![Term::var("X"), Term::var("Z")]),
+            Literal::neg("path", vec![Term::var("Z"), Term::var("Y")]),
+            Literal::pos("path", vec![Term::var("X"), Term::var("Y")]),
+        ]);
+        assert!(clause.is_positively_ground_preserving());
+    }
+
+    #[test]
+    fn restrained_vacuous_for_ground_positive() {
+        // No non-ground positive literals => restrained condition is vacuous.
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::var("X")]),
+            Literal::pos("Q", vec![Term::constant("a")]),
+        ]);
+        assert!(clause.is_restrained());
+    }
+}
+// =============================================================================
+// SGGS MOVE SEMANTICS
+// =============================================================================
+//
+// Reference: [BP17] conflict-solving rules (move)
+mod move_semantics {
+    use super::*;
+    use crate::constraint::Constraint;
+    use crate::sggs::{sggs_move, ConstrainedClause, InitialInterpretation, MoveError, Trail};
+
+    #[test]
+    fn sggs_move_reorders_conflict_before_justification() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        let c1 = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            Constraint::True,
+            0,
+        );
+        let c2 = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+            Constraint::True,
+            0,
+        );
+        trail.push(c1);
+        trail.push(c2);
+
+        let result = sggs_move(&mut trail, 1);
+        assert!(result.is_ok());
+        assert_eq!(
+            trail.clauses()[0].selected_literal(),
+            &Literal::neg("P", vec![Term::constant("a")])
+        );
+    }
+
+    #[test]
+    fn sggs_move_rejects_non_conflict_clause() {
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        trail.push(ConstrainedClause::new(
+            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            0,
+        ));
+        let result = sggs_move(&mut trail, 0);
+        assert!(matches!(result, Err(MoveError::NotConflictClause)));
+    }
+}
+// =============================================================================
+// SGGS SPLITTING PROPERTIES
+// =============================================================================
+//
+// Reference: [BP16a] Definitions 13-15 (partition and splitting)
+mod splitting_semantics {
+    use super::*;
+    use crate::constraint::Constraint;
+    use crate::sggs::ConstrainedClause;
+    use crate::unify::Substitution;
+    use std::collections::{HashMap, HashSet};
+
+    fn constraint_holds(c: &Constraint, subst: &Substitution) -> bool {
+        match c {
+            Constraint::True => true,
+            Constraint::False => false,
+            Constraint::Atomic(a) => a.evaluate(subst).unwrap_or(false),
+            Constraint::And(a, b) => constraint_holds(a, subst) && constraint_holds(b, subst),
+            Constraint::Or(a, b) => constraint_holds(a, subst) || constraint_holds(b, subst),
+            Constraint::Not(a) => !constraint_holds(a, subst),
+        }
+    }
+
+    fn ground_atoms_for_clause(clause: &ConstrainedClause, consts: &[Term]) -> HashSet<Atom> {
+        let lit = clause.selected_literal();
+        let vars: HashSet<Var> = lit.variables();
+        let vars: Vec<Var> = vars.into_iter().collect();
+        let mut atoms = HashSet::new();
+
+        fn assign(
+            idx: usize,
+            vars: &[Var],
+            consts: &[Term],
+            lit: &Literal,
+            constraint: &Constraint,
+            atoms: &mut HashSet<Atom>,
+            subst: &mut Substitution,
+        ) {
+            if idx == vars.len() {
+                if constraint_holds(constraint, subst) {
+                    let inst = lit.apply_subst(&subst_to_map(subst));
+                    atoms.insert(inst.atom);
+                }
+                return;
+            }
+            let var = vars[idx].clone();
+            for c in consts {
+                let mut s = subst.clone();
+                s.bind(var.clone(), c.clone());
+                assign(idx + 1, vars, consts, lit, constraint, atoms, &mut s);
+            }
+        }
+
+        fn subst_to_map(subst: &Substitution) -> HashMap<Var, Term> {
+            let mut map = HashMap::new();
+            for v in subst.domain() {
+                if let Some(t) = subst.lookup(v) {
+                    map.insert(v.clone(), t.clone());
+                }
+            }
+            map
+        }
+
+        let mut subst = Substitution::empty();
+        assign(0, &vars, consts, lit, &clause.constraint, &mut atoms, &mut subst);
+        atoms
+    }
+
+    #[test]
+    fn splitting_partition_is_complete_and_disjoint() {
+        let clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos(
+                "P",
+                vec![Term::var("x"), Term::var("y")],
+            )]),
+            Constraint::True,
+            0,
+        );
+        let other = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos(
+                "P",
+                vec![
+                    Term::app("f", vec![Term::var("w")]),
+                    Term::app("g", vec![Term::var("z")]),
+                ],
+            )]),
+            Constraint::True,
+            0,
+        );
+
+        let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
+
+        let consts = vec![Term::constant("a"), Term::constant("b")];
+        let original = ground_atoms_for_clause(&clause, &consts);
+        let mut union = HashSet::new();
+
+        let mut parts_atoms = Vec::new();
+        for part in &result.parts {
+            let atoms = ground_atoms_for_clause(part, &consts);
+            for a in &atoms {
+                union.insert(a.clone());
+            }
+            parts_atoms.push(atoms);
+        }
+
+        assert_eq!(union, original, "split parts must cover original");
+
+        for i in 0..parts_atoms.len() {
+            for j in (i + 1)..parts_atoms.len() {
+                let inter: HashSet<_> = parts_atoms[i].intersection(&parts_atoms[j]).collect();
+                assert!(inter.is_empty(), "split parts must be disjoint");
+            }
+        }
     }
 }
 // =============================================================================
