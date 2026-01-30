@@ -12,6 +12,7 @@ use super::*;
 // - The trail represents a partial interpretation I^p(Γ)
 // - Literals are "I-false" (uniformly false in I) or "I-true" (true in I)
 // - Selected literals should be I-false to "differentiate from I"
+use crate::constraint::{AtomicConstraint, Constraint};
 use crate::sggs::{ConstrainedClause, InitialInterpretation, Trail};
 
 // -------------------------------------------------------------------------
@@ -54,6 +55,20 @@ fn selected_literal_must_be_i_false_under_i_positive() {
         !selected.positive,
         "[BP16a] Selected literal under I⁺ should be negative (I-false)"
     );
+}
+
+#[test]
+#[should_panic]
+fn trail_rejects_i_true_selection_when_i_false_available() {
+    // [BP16a] Def 1: if a clause has I-false literals, one of them must be selected.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let clause = Clause::new(vec![
+        Literal::pos("p", vec![Term::constant("a")]), // I-false under I⁻
+        Literal::neg("q", vec![Term::constant("b")]), // I-true under I⁻
+    ]);
+    // Select the I-true literal, which violates the SGGS clause sequence invariant.
+    let constrained = ConstrainedClause::new(clause, 1);
+    trail.push(constrained);
 }
 
 // -------------------------------------------------------------------------
@@ -100,6 +115,37 @@ fn disjoint_prefix_stops_on_unifiable_selected_literals() {
     );
 }
 
+#[test]
+fn disjoint_prefix_respects_constraints() {
+    // [BP16a] Def 5: disjointness is about intersection of constrained ground instances,
+    // not just syntactic unifiability.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let c1 = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::Atomic(AtomicConstraint::RootNotEquals(
+            Term::var("x"),
+            "f".to_string(),
+        )),
+        0,
+    );
+    let c2 = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::var("y")])],
+        )]),
+        Constraint::True,
+        0,
+    );
+    trail.push(c1);
+    trail.push(c2);
+
+    assert_eq!(
+        trail.disjoint_prefix_length(),
+        2,
+        "Constraints can make unifiable literals disjoint"
+    );
+}
+
 // -------------------------------------------------------------------------
 // Property: Conflict clause definition
 //
@@ -139,6 +185,22 @@ fn non_conflict_has_satisfiable_literal() {
         !constrained.is_conflict(&interp),
         "[BP16a] Clause with I-true literal cannot be conflict"
     );
+}
+
+#[test]
+fn interpretation_uses_initial_for_unassigned_literals() {
+    // [BP16a] Def 7: I[Γ] extends I for literals not defined in I^p(Γ).
+    let trail_neg = Trail::new(InitialInterpretation::AllNegative);
+    let interp_neg = trail_neg.interpretation();
+    let pos = Literal::pos("P", vec![Term::constant("a")]);
+    let neg = Literal::neg("P", vec![Term::constant("a")]);
+    assert!(interp_neg.is_uniformly_false(&pos));
+    assert!(interp_neg.is_uniformly_true(&neg));
+
+    let trail_pos = Trail::new(InitialInterpretation::AllPositive);
+    let interp_pos = trail_pos.interpretation();
+    assert!(interp_pos.is_uniformly_true(&pos));
+    assert!(interp_pos.is_uniformly_false(&neg));
 }
 
 // -------------------------------------------------------------------------

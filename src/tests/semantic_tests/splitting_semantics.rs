@@ -161,3 +161,19 @@ fn splitting_representative_matches_intersection() {
     }
     assert!(found, "split should include representative of the intersection");
 }
+
+#[test]
+fn splitting_trivial_returns_none() {
+    // [BP16a] Example 9: trivial splitting (by an equal/more general clause) should not apply.
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::True,
+        0,
+    );
+    let other = clause.clone();
+
+    assert!(
+        crate::sggs::sggs_splitting(&clause, &other).is_none(),
+        "Trivial splitting should be rejected"
+    );
+}

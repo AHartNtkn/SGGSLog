@@ -66,3 +66,32 @@ fn assignment_selected_i_true_is_rightmost_dependency() {
     // The other literal depends on clause 1 as well.
     assert_eq!(assigns.assigned_to(2, 1), Some(1));
 }
+
+#[test]
+fn assignment_selected_i_true_only_if_possible() {
+    // [BP16a] Def 12: Non-selected I-true must be assigned if possible;
+    // selected I-true is assigned only if possible.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let c1 = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    );
+    // I-all-true clause with two negative literals, but only ¬P(a) has a dependency.
+    let c2 = ConstrainedClause::with_constraint(
+        Clause::new(vec![
+            Literal::neg("P", vec![Term::constant("a")]),
+            Literal::neg("Q", vec![Term::constant("a")]),
+        ]),
+        Constraint::True,
+        1, // select ¬Q(a), which has no justification
+    );
+    trail.push(c1);
+    trail.push(c2);
+
+    let assigns = compute_assignments(&trail);
+    // Non-selected I-true literal ¬P(a) should be assigned to clause 0.
+    assert_eq!(assigns.assigned_to(1, 0), Some(0));
+    // Selected I-true literal ¬Q(a) has no dependency, so remains unassigned.
+    assert_eq!(assigns.assigned_to(1, 1), None);
+}

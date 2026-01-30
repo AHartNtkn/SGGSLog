@@ -99,4 +99,54 @@ mod tests {
             other => panic!("Expected conflict extension, got {:?}", other),
         }
     }
+
+    #[test]
+    fn test_extension_with_no_i_true_literals() {
+        // Source: SGGSdpFOL.pdf, Definition 1 (SGGS-extension scheme), n ≥ 0.
+        // If a clause has no I-true literals, extension does not need side premises.
+        // (Here we use a ground clause; the non-ground case is covered separately.)
+        let trail = Trail::new(InitialInterpretation::AllNegative);
+
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::constant("a")],
+        )]));
+
+        match sggs_extension(&trail, &theory) {
+            ExtensionResult::Extended(cc) => {
+                assert_eq!(
+                    cc.clause.literals,
+                    vec![Literal::pos("P", vec![Term::constant("a")])]
+                );
+                assert_eq!(
+                    cc.selected_literal(),
+                    &Literal::pos("P", vec![Term::constant("a")])
+                );
+            }
+            other => panic!("Expected extension with n=0, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_extension_with_no_i_true_literals_non_ground() {
+        // Source: SGGSdpFOL.pdf, Definition 1 (SGGS-extension scheme), n ≥ 0.
+        // With no I-true literals, the extension clause can be a non-ground instance.
+        let trail = Trail::new(InitialInterpretation::AllNegative);
+
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]);
+        theory.add_clause(clause.clone());
+
+        match sggs_extension(&trail, &theory) {
+            ExtensionResult::Extended(cc) => {
+                assert_eq!(cc.clause, clause);
+                assert_eq!(
+                    cc.selected_literal(),
+                    &Literal::pos("P", vec![Term::var("X")])
+                );
+            }
+            other => panic!("Expected non-ground extension with n=0, got {:?}", other),
+        }
+    }
 }

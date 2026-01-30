@@ -60,4 +60,26 @@ mod tests {
 
         assert!(sggs_left_split(&clause, &other).is_none());
     }
+
+    #[test]
+    fn test_left_split_defers_when_factoring_applicable() {
+        // Source: SGGSdpFOL, Fig. 2 (l-split applies only if condition (†) does not hold).
+        // If the other clause has a same-sign literal unifying with its selected literal,
+        // factoring should be preferred, so left-split should not apply.
+        let clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+            Constraint::True,
+            0,
+        );
+        let other = ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::pos("P", vec![Term::var("y")]), // selected
+                Literal::pos("P", vec![Term::constant("a")]),
+            ]),
+            Constraint::True,
+            0,
+        );
+
+        assert!(sggs_left_split(&clause, &other).is_none());
+    }
 }
