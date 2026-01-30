@@ -6,35 +6,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SGGSLog is a minimal but complete implementation of a logic programming language in Rust that executes according to Semantically Guided Goal-Sensitive Reasoning (SGGS).
 
-## Target Architecture
+## Module Structure
 
-- **Core**: SGGS inference engine in Rust
-- **CLI**: Command-line interface for loading theories and making queries
-- **Jupyter Kernel**: Interactive notebook support for theory definitions and queries
+- **syntax**: First-order logic terms, literals, and clauses (`Term`, `Literal`, `Clause`)
+- **unify**: Unification algorithm and substitutions (`Substitution`, `unify`, `unify_literals`)
+- **constraint**: Constraints for SGGS constrained clauses (`AtomicConstraint`, `Constraint`)
+- **sggs**: Core SGGS inference system including:
+  - `Trail` and `TrailInterpretation` for the SGGS trail
+  - `ConstrainedClause` for clauses with constraints
+  - Inference rules: extension, resolution, splitting, left-split, deletion, factoring, move
+  - `derive` for running complete derivations
+- **parser**: Surface syntax parsing (`parse_file`, `parse_query`)
+- **theory**: Theory management (`Theory`)
+- **repl**: Interactive REPL (`Repl`)
+- **jupyter**: Jupyter kernel support (`Kernel`)
 
 ## Build Commands
 
 ```bash
-# Build the project
-cargo build
-
-# Run tests
-cargo test
-
-# Run a single test
-cargo test test_name
-
-# Run tests with output
-cargo test -- --nocapture
-
-# Check without building
-cargo check
-
-# Format code
-cargo fmt
-
-# Run linter
-cargo clippy
+cargo build          # Build the project
+cargo test           # Run all tests
+cargo test name      # Run a single test
+cargo test -- --nocapture  # Run tests with output
+cargo check          # Type-check without building
+cargo fmt            # Format code
+cargo clippy         # Run linter
 ```
 
 ## Development Approach
@@ -54,6 +50,9 @@ pub fn unify(t1: &Term, t2: &Term) -> Option<Substitution> {
 }
 ```
 
-## Project Status
+## Testing
 
-This project is in early development. The spec.md file contains the project requirements.
+Tests are organized as:
+- Unit tests within each module (`src/*/mod.rs`)
+- Semantic tests in `src/tests/`
+- Integration tests in `tests/` (parser semantics, SGGS properties, theory semantics)
