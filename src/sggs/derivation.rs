@@ -147,12 +147,21 @@ mod tests {
 
     #[test]
     fn next_inference_only_factoring_applicable() {
-        // Single clause with two unifiable same-sign literals; factoring should apply.
-        let mut trail = Trail::new(InitialInterpretation::AllPositive);
+        // SGGS-factoring applies to I-all-true conflict clauses when another
+        // same-sign literal assigned to the same clause unifies with the selected literal.
+        // Source: bonacina2016.pdf, Definition 27 (SGGS-factoring).
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        // Side premise in dp(Γ): selected I-false literal P(a)
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            Constraint::True,
+            0,
+        ));
+        // I-all-true conflict clause with two identical literals assigned to the same premise.
         trail.push(ConstrainedClause::with_constraint(
             Clause::new(vec![
-                Literal::pos("P", vec![Term::var("X")]),
-                Literal::pos("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::constant("a")]),
             ]),
             Constraint::True,
             0,
@@ -163,11 +172,17 @@ mod tests {
 
     #[test]
     fn derivation_state_step_reports_rule() {
-        let mut trail = Trail::new(InitialInterpretation::AllPositive);
+        // Source: bonacina2016.pdf, Definition 27 (SGGS-factoring).
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            Constraint::True,
+            0,
+        ));
         trail.push(ConstrainedClause::with_constraint(
             Clause::new(vec![
-                Literal::pos("P", vec![Term::var("X")]),
-                Literal::pos("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::constant("a")]),
             ]),
             Constraint::True,
             0,
@@ -205,23 +220,19 @@ mod tests {
 
     #[test]
     fn applicable_inferences_includes_left_split() {
+        // Left-split applies when an I-all-true clause is assigned to a dp(Γ) clause
+        // with strict subset condition ¬Gr(B⊲M) ⊂ pcgi(A⊲L,Γ), and no factoring (†).
+        // Source: bonacina2016.pdf, Definition 24 (Left splitting); SGGSdpFOL Fig. 2.
         let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        // A ⊲ C[L] in dp(Γ) with L = P(x) (I-false under I⁻)
         trail.push(ConstrainedClause::with_constraint(
-            Clause::new(vec![Literal::pos(
-                "P",
-                vec![Term::var("x"), Term::var("y")],
-            )]),
+            Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
             Constraint::True,
             0,
         ));
+        // I-all-true conflict clause B ⊲ D[M] with M = ¬P(a) assigned to C
         trail.push(ConstrainedClause::with_constraint(
-            Clause::new(vec![Literal::pos(
-                "P",
-                vec![
-                    Term::app("f", vec![Term::var("w")]),
-                    Term::app("g", vec![Term::var("z")]),
-                ],
-            )]),
+            Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
             Constraint::True,
             0,
         ));
@@ -230,6 +241,40 @@ mod tests {
         assert!(
             rules.contains(&InferenceRule::LeftSplit),
             "left-split should be applicable on intersecting clauses"
+        );
+    }
+
+    #[test]
+    fn applicable_inferences_excludes_left_split_when_factoring_applies() {
+        // If condition (†) holds (another literal unifies with the selected one),
+        // factoring should be applicable and left-split should not.
+        // Source: SGGSdpFOL.pdf, Fig. 2 (condition †).
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        // Side premise in dp(Γ): selected P(a)
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            Constraint::True,
+            0,
+        ));
+        // I-all-true conflict clause with two identical literals († holds)
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::neg("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::constant("a")]),
+            ]),
+            Constraint::True,
+            0,
+        ));
+
+        let theory = Theory::new();
+        let rules = applicable_inferences(&trail, &theory);
+        assert!(
+            rules.contains(&InferenceRule::Factoring),
+            "factoring should be applicable when (†) holds"
+        );
+        assert!(
+            !rules.contains(&InferenceRule::LeftSplit),
+            "left-split should not apply when factoring is applicable"
         );
     }
 
@@ -246,6 +291,48 @@ mod tests {
         assert!(
             !rules.contains(&InferenceRule::Resolution),
             "resolution requires an assigned justification in dp(Γ)"
+        );
+    }
+
+    #[test]
+    fn resolution_prunes_assigned_clauses() {
+        // SGGS-resolution removes clauses with literals assigned to the resolved conflict clause.
+        // Source: SGGSdpFOL.pdf, Fig. 2 (resolve rule, Γ' pruning).
+        let a = Term::constant("a");
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        // Justification in dp(Γ): ¬Q(a)
+        trail.push(ConstrainedClause::new(
+            Clause::new(vec![Literal::neg("Q", vec![a.clone()])]),
+            0,
+        ));
+        // Conflict clause: Q(a) ∨ R(a), selected Q(a)
+        trail.push(ConstrainedClause::new(
+            Clause::new(vec![
+                Literal::pos("Q", vec![a.clone()]),
+                Literal::pos("R", vec![a.clone()]),
+            ]),
+            0,
+        ));
+        // Clause whose selected literal depends on Q(a) in the conflict clause
+        trail.push(ConstrainedClause::new(
+            Clause::new(vec![Literal::neg("Q", vec![a.clone()])]),
+            0,
+        ));
+
+        let theory = Theory::new();
+        let mut state = DerivationState::from_trail(theory, trail, DerivationConfig::default());
+        let step = state.step().expect("expected a step");
+        assert_eq!(step.rule, InferenceRule::Resolution);
+
+        // After resolution, any clause assigned to the conflict clause should be removed.
+        assert!(
+            !state
+                .trail()
+                .clauses()
+                .iter()
+                .skip(1)
+                .any(|c| c.selected_literal() == &Literal::neg("Q", vec![a.clone()])),
+            "assigned clauses should be pruned after resolution"
         );
     }
 

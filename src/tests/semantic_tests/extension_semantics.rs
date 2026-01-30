@@ -193,3 +193,46 @@ fn extension_prefers_most_general_instance_when_n0() {
         other => panic!("Expected most-general extension, got {:?}", other),
     }
 }
+
+#[test]
+fn extension_conflict_via_extension_substitution() {
+    // When every I-false literal intersects an I-true selected literal in dp(Γ),
+    // SGGS-extension applies the extension substitution to make the clause uniformly false,
+    // yielding a conflict clause (Bonacina 2016, Defs. 18–21).
+    // Source: bonacina2016.pdf, Definitions 18–21 (extension substitution / conflict).
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // I-false selected literal: P(a)
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    // I-true selected literal: ¬P(f(a))
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::app("f", vec![Term::constant("a")])])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Conflict(cc) => {
+            // The instantiated clause should be ¬P(a) ∨ P(f(a)).
+            let lits: std::collections::HashSet<_> =
+                cc.clause.literals.iter().cloned().collect();
+            let expected: std::collections::HashSet<_> = vec![
+                Literal::neg("P", vec![Term::constant("a")]),
+                Literal::pos("P", vec![Term::app("f", vec![Term::constant("a")])]),
+            ]
+            .into_iter()
+            .collect();
+            assert_eq!(lits, expected);
+        }
+        other => panic!(
+            "Expected conflict via extension substitution, got {:?}",
+            other
+        ),
+    }
+}

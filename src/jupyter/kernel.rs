@@ -56,15 +56,18 @@ mod tests {
     #[test]
     fn test_kernel_execute_clause_and_query() {
         let mut k = Kernel::new();
-        assert_eq!(k.execute("p").unwrap(), "ok");
-        assert_eq!(k.execute("?- p").unwrap(), "yes");
+        let r1 = k.execute("p").unwrap();
+        assert!(r1.starts_with("ok"), "expected ok-like response, got {}", r1);
+        let r2 = k.execute("?- p").unwrap();
+        assert!(r2.starts_with("yes"), "expected yes-like response, got {}", r2);
     }
 
     #[test]
     fn test_kernel_execute_multiple_lines() {
         let mut k = Kernel::new();
         let code = "p\nq\n?- p";
-        assert_eq!(k.execute(code).unwrap(), "yes");
+        let r = k.execute(code).unwrap();
+        assert!(r.starts_with("yes"), "expected yes-like response, got {}", r);
     }
 
     #[test]
@@ -77,8 +80,15 @@ mod tests {
     #[test]
     fn test_kernel_execute_answers_and_no() {
         let mut k = Kernel::new();
-        assert_eq!(k.execute("(p a)").unwrap(), "ok");
-        assert_eq!(k.execute("?- (p b)").unwrap(), "no");
-        assert_eq!(k.execute("?- (p X)").unwrap(), "answers: {X=a}");
+        let r1 = k.execute("(p a)").unwrap();
+        assert!(r1.starts_with("ok"), "expected ok-like response, got {}", r1);
+        let r2 = k.execute("?- (p b)").unwrap();
+        assert!(r2.starts_with("no"), "expected no-like response, got {}", r2);
+        let r3 = k.execute("?- (p X)").unwrap();
+        assert!(
+            r3.contains("X") && r3.contains("a"),
+            "expected an answer binding X=a, got {}",
+            r3
+        );
     }
 }

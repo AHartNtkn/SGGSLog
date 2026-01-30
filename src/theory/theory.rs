@@ -70,6 +70,13 @@ impl Theory {
         self.clauses.iter().all(|c| c.is_restrained(order))
     }
 
+    /// Check if every clause is negatively restrained.
+    pub fn is_negatively_restrained<O: crate::syntax::AtomOrder>(&self, order: &O) -> bool {
+        self.clauses
+            .iter()
+            .all(|c| c.is_negatively_restrained(order))
+    }
+
     /// Check if every clause is in the PVD fragment.
     pub fn is_pvd(&self) -> bool {
         self.clauses.iter().all(|c| c.is_pvd())
@@ -84,6 +91,17 @@ impl Theory {
         self.clauses
             .iter()
             .all(|c| c.is_sort_restrained(infinite_sorts, order))
+    }
+
+    /// Check if every clause is negatively sort-restrained for the given set of infinite sorts.
+    pub fn is_sort_negatively_restrained<O: crate::syntax::AtomOrder>(
+        &self,
+        infinite_sorts: &std::collections::HashSet<String>,
+        order: &O,
+    ) -> bool {
+        self.clauses
+            .iter()
+            .all(|c| c.is_sort_negatively_restrained(infinite_sorts, order))
     }
 
     /// Check if every clause is sort-refined PVD for the given set of infinite sorts.
@@ -420,6 +438,53 @@ mod tests {
     }
 
     #[test]
+    fn test_restraining_system_requires_rules_for_all_non_ground_positive_literals() {
+        // If a clause has multiple non-ground positive literals, each must be restrained.
+        // Source: SGGSdpFOL.pdf, Definition 15 (Restraining system).
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::var("x")]),
+            Literal::pos("Q", vec![Term::var("x")]),
+            Literal::pos("R", vec![Term::var("x")]),
+        ]);
+        theory.add_clause(clause);
+
+        let mut system = RestrainingSystem::default();
+        system.rs.push(RewriteRule {
+            lhs: Atom::new("P", vec![Term::var("x")]),
+            rhs: Atom::new("Q", vec![Term::var("x")]),
+        });
+
+        assert!(
+            !theory.is_restraining_system(&system),
+            "missing rule for R(x) should fail restraining check"
+        );
+    }
+
+    #[test]
+    fn test_restraining_system_rule_must_match_negative_literal() {
+        // Rule must be induced by a negative literal in the same clause.
+        // Source: SGGSdpFOL.pdf, Definition 15 (Restraining system).
+        let mut theory = Theory::new();
+        let clause = Clause::new(vec![
+            Literal::neg("P", vec![Term::var("x")]),
+            Literal::pos("Q", vec![Term::var("x")]),
+        ]);
+        theory.add_clause(clause);
+
+        let mut system = RestrainingSystem::default();
+        system.rs.push(RewriteRule {
+            lhs: Atom::new("R", vec![Term::var("x")]),
+            rhs: Atom::new("Q", vec![Term::var("x")]),
+        });
+
+        assert!(
+            !theory.is_restraining_system(&system),
+            "rule must be induced by a negative literal of the clause"
+        );
+    }
+
+    #[test]
     fn test_basis_respects_rewrite_closure() {
         // Source: SGGSdpFOL Definition 7 (Basis for a restrained set).
         // If P(f(a)) occurs and RS has P(f(x)) -> P(x), basis includes P(a) and P(f(a)).
@@ -446,5 +511,32 @@ mod tests {
                 vec![Term::app("f", vec![Term::constant("a")])]
             )]
         )));
+    }
+
+    #[test]
+    fn test_basis_rewrite_closure_multiple_steps() {
+        // If P(f(f(a))) occurs and RS has P(f(x)) -> P(x),
+        // basis should include P(f(f(a))), P(f(a)), and P(a).
+        // Source: SGGSdpFOL.pdf, Definition 7 (Basis for restrained set).
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::app("f", vec![Term::constant("a")])])],
+        )]));
+        let mut system = RestrainingSystem::default();
+        system.rs.push(RewriteRule {
+            lhs: Atom::new("P", vec![Term::app("f", vec![Term::var("x")])]),
+            rhs: Atom::new("P", vec![Term::var("x")]),
+        });
+        let basis = theory.basis(&system);
+        assert!(basis.contains(&Atom::new(
+            "P",
+            vec![Term::app("f", vec![Term::app("f", vec![Term::constant("a")])])]
+        )));
+        assert!(basis.contains(&Atom::new(
+            "P",
+            vec![Term::app("f", vec![Term::constant("a")])]
+        )));
+        assert!(basis.contains(&Atom::new("P", vec![Term::constant("a")])));
     }
 }

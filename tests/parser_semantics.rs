@@ -23,6 +23,18 @@ fn test_zero_ary_predicate_parsing() {
 }
 
 #[test]
+fn test_application_without_parentheses() {
+    // Source: spec.md (surface syntax allows predicate application in files/REPL).
+    // Surface syntax should allow "p a b" as p(a,b).
+    let f = single_formula("p a b");
+    let expected = Formula::atom(Atom::new(
+        "p",
+        vec![Term::constant("a"), Term::constant("b")],
+    ));
+    assert_eq!(f, expected);
+}
+
+#[test]
 fn test_negation_sugar_ascii_and_unicode() {
     let f1 = single_formula("~p");
     let f2 = single_formula("¬p");
@@ -55,6 +67,32 @@ fn test_quantifier_parsing_preserved() {
         Formula::atom(Atom::new("p", vec![Term::var("X")])),
     );
     assert_eq!(f, expected);
+}
+
+#[test]
+fn test_nested_quantifiers_parse_as_nested() {
+    // Source: standard FOL quantifier nesting (consistent with spec.md surface syntax).
+    let f = single_formula("∀X ∀Y (p X Y)");
+    match f {
+        Formula::Forall(x, inner) => match *inner {
+            Formula::Forall(y, body) => {
+                assert_eq!(x.name(), "X");
+                assert_eq!(y.name(), "Y");
+                match *body {
+                    Formula::Atom(atom) => {
+                        assert_eq!(atom.predicate, "p");
+                        assert_eq!(
+                            atom.args,
+                            vec![Term::var("X"), Term::var("Y")]
+                        );
+                    }
+                    _ => panic!("expected atom under nested quantifiers"),
+                }
+            }
+            _ => panic!("expected nested forall"),
+        },
+        _ => panic!("expected outer forall"),
+    }
 }
 
 #[test]

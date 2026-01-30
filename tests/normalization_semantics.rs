@@ -348,3 +348,43 @@ fn test_skolem_symbols_fresh_across_clauses() {
         "distinct existentials require distinct Skolem symbols"
     );
 }
+
+#[test]
+fn test_skolem_functions_fresh_across_statements_with_universals() {
+    // Each existential in separate statements should get a fresh Skolem function
+    // even if the formulas are alpha-equivalent.
+    // Source: standard Skolemization; distinct existentials introduce fresh symbols.
+    let clauses = clausify_src("∀X ∃Y (p X Y)\n∀X ∃Y (q X Y)");
+    assert_eq!(clauses.len(), 2);
+
+    let f1 = match &clauses[0].literals[0].atom.args[1] {
+        Term::App(sym, args) => (sym.name.clone(), args.clone()),
+        _ => panic!("expected Skolem function in first clause"),
+    };
+    let f2 = match &clauses[1].literals[0].atom.args[1] {
+        Term::App(sym, args) => (sym.name.clone(), args.clone()),
+        _ => panic!("expected Skolem function in second clause"),
+    };
+    assert_ne!(f1.0, f2.0, "Skolem functions should be fresh across statements");
+    assert_eq!(f1.1.len(), 1, "Skolem function should depend on the universal");
+    assert_eq!(f2.1.len(), 1, "Skolem function should depend on the universal");
+}
+
+#[test]
+fn test_skolemization_does_not_capture_universals_from_other_statements() {
+    // Source: standard Skolemization + spec.md (variables scoped per clause).
+    let clauses = clausify_src("∀X (p X)\n∃Y (q Y)");
+    assert_eq!(clauses.len(), 2);
+
+    // The existential in the second statement should introduce a Skolem constant,
+    // not a function of the unrelated universal from the first statement.
+    let sk = match &clauses[1].literals[0].atom.args[0] {
+        Term::Const(c) => (c.name().to_string(), 0usize),
+        Term::App(sym, args) => (sym.name.clone(), args.len()),
+        _ => panic!("expected Skolem symbol in second clause"),
+    };
+    assert_eq!(
+        sk.1, 0,
+        "Skolem symbol should be a constant; universals from other statements are out of scope"
+    );
+}

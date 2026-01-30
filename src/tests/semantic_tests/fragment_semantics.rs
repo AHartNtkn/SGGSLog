@@ -103,6 +103,31 @@ fn restrained_rejects_non_dominating_negative_literal() {
 }
 
 #[test]
+fn negatively_restrained_accepts_positive_dominance() {
+    // Dual of restrained: non-ground negative literal must be dominated by a positive literal.
+    // Source: BW20 (restrained fragment), dual of Def. 5.
+    let clause = Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
+    ]);
+    let order = SizeOrder;
+    assert!(clause.is_negatively_ground_preserving());
+    assert!(clause.is_negatively_restrained(&order));
+}
+
+#[test]
+fn negatively_restrained_requires_negative_ground_preserving() {
+    // Source: BW20 (ground-preserving requirement for restrained fragments).
+    let clause = Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X"), Term::var("Y")]),
+        Literal::pos("P", vec![Term::var("X")]),
+    ]);
+    let order = SizeOrder;
+    assert!(!clause.is_negatively_ground_preserving());
+    assert!(!clause.is_negatively_restrained(&order));
+}
+
+#[test]
 fn pvd_clause_true_when_depth_non_increasing() {
     // PVD: depth_x(C+) <= depth_x(C-) for all x in Var(C+)
     let clause = Clause::new(vec![
@@ -198,6 +223,29 @@ fn sort_restrained_requires_negative_dominance_for_infinite() {
 }
 
 #[test]
+fn sort_negatively_restrained_vacuous_for_finite_sorts() {
+    // Source: BW20 Def. 10 (sort-restrained), negative variant.
+    use std::collections::HashSet;
+    let inf = HashSet::new();
+    let x = Term::Var(Var::new_with_sort("X", "s_fin"));
+    let clause = Clause::new(vec![Literal::neg("P", vec![x])]);
+    let order = SizeOrder;
+    assert!(clause.is_sort_negatively_restrained(&inf, &order));
+}
+
+#[test]
+fn sort_negatively_restrained_requires_positive_dominance_for_infinite() {
+    // Source: BW20 Def. 10 (sort-restrained), negative variant.
+    use std::collections::HashSet;
+    let mut inf = HashSet::new();
+    inf.insert("s_inf".to_string());
+    let x = Term::Var(Var::new_with_sort("X", "s_inf"));
+    let clause = Clause::new(vec![Literal::neg("P", vec![x])]);
+    let order = SizeOrder;
+    assert!(!clause.is_sort_negatively_restrained(&inf, &order));
+}
+
+#[test]
 fn sort_restrained_mixed_sorts_still_requires_infinite_dominance() {
     use std::collections::HashSet;
     let mut inf = HashSet::new();
@@ -274,6 +322,36 @@ fn theory_restrained_respects_ordering() {
 }
 
 #[test]
+fn theory_restrained_fails_if_any_clause_violates() {
+    // Source: BW20 (restrained fragment requires all clauses).
+    let mut theory = crate::theory::Theory::new();
+    // Restrained clause
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("P", vec![Term::var("X")]),
+    ]));
+    // Non-restrained clause (positive literal not dominated)
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
+    ]));
+    let order = SizeOrder;
+    assert!(!theory.is_restrained(&order));
+}
+
+#[test]
+fn theory_negatively_restrained_respects_ordering() {
+    // Source: BW20 (restrained fragment, theory-level all-clauses check).
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
+    ]));
+    let order = SizeOrder;
+    assert!(theory.is_negatively_restrained(&order));
+}
+
+#[test]
 fn theory_sort_restrained_respects_ordering() {
     use std::collections::HashSet;
     let mut inf = HashSet::new();
@@ -284,6 +362,20 @@ fn theory_sort_restrained_respects_ordering() {
     theory.add_clause(clause);
     let order = SizeOrder;
     assert!(!theory.is_sort_restrained(&inf, &order));
+}
+
+#[test]
+fn theory_sort_negatively_restrained_respects_ordering() {
+    // Source: BW20 Def. 10 (sort-restrained), negative variant.
+    use std::collections::HashSet;
+    let mut inf = HashSet::new();
+    inf.insert("s_inf".to_string());
+    let x = Term::Var(Var::new_with_sort("X", "s_inf"));
+    let clause = Clause::new(vec![Literal::neg("P", vec![x])]);
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(clause);
+    let order = SizeOrder;
+    assert!(!theory.is_sort_negatively_restrained(&inf, &order));
 }
 
 #[test]

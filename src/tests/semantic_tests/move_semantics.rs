@@ -58,35 +58,35 @@ fn sggs_move_rejects_conflict_without_assignment() {
 #[test]
 fn sggs_move_moves_before_rightmost_assignment() {
     // Source: paper6.pdf, assignment rule: selected I-true literal is assigned rightmost.
+    // Source: SGGSdpFOL.pdf, Fig. 2 (move rule).
     // Move should relocate the conflict clause just before its rightmost justification.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // Two identical P(a) premises make ¬P(a) depend on both; rightmost is index 1.
     trail.push(ConstrainedClause::new(
         Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
         0,
     ));
     trail.push(ConstrainedClause::new(
-        Clause::new(vec![Literal::pos("Q", vec![Term::constant("a")])]),
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
         0,
     ));
 
+    // I-all-true conflict clause with selected literal assigned rightmost by Def. 9.
     let conflict = ConstrainedClause::new(
-        Clause::new(vec![
-            Literal::neg("P", vec![Term::constant("a")]),
-            Literal::neg("Q", vec![Term::constant("a")]),
-        ]),
-        0, // selected I-true literal; assignment should be rightmost (index 1)
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        0,
     );
     trail.push(conflict);
 
     let result = sggs_move(&mut trail, 2);
     assert!(result.is_ok());
-    // Conflict clause should now be just before the rightmost justification (Q).
+    // Conflict clause should now be just before the rightmost justification (second P).
     assert_eq!(
         trail.clauses()[1].selected_literal(),
         &Literal::neg("P", vec![Term::constant("a")])
     );
     assert_eq!(
         trail.clauses()[2].selected_literal(),
-        &Literal::pos("Q", vec![Term::constant("a")])
+        &Literal::pos("P", vec![Term::constant("a")])
     );
 }

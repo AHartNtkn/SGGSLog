@@ -97,6 +97,12 @@ impl Clause {
         todo!("Clause::is_restrained implementation")
     }
 
+    /// Check if this clause is negatively restrained (dual of BW20 Def. 6)
+    /// under a given atom ordering.
+    pub fn is_negatively_restrained<O: AtomOrder>(&self, _order: &O) -> bool {
+        todo!("Clause::is_negatively_restrained implementation")
+    }
+
     /// Check if this clause is in the PVD fragment (Def. 12, SGGSdpFOL).
     pub fn is_pvd(&self) -> bool {
         todo!("Clause::is_pvd implementation")
@@ -110,6 +116,16 @@ impl Clause {
         _order: &O,
     ) -> bool {
         todo!("Clause::is_sort_restrained implementation")
+    }
+
+    /// Check if this clause is negatively sort-restrained for a given set of infinite sorts
+    /// under a given atom ordering (dual of Def. 10).
+    pub fn is_sort_negatively_restrained<O: AtomOrder>(
+        &self,
+        _infinite_sorts: &HashSet<String>,
+        _order: &O,
+    ) -> bool {
+        todo!("Clause::is_sort_negatively_restrained implementation")
     }
 
     /// Check if this clause is sort-refined PVD for a given set of infinite sorts (Def. 13).

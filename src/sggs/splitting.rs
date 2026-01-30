@@ -17,7 +17,20 @@ pub fn sggs_splitting(
     _clause: &ConstrainedClause,
     _other: &ConstrainedClause,
 ) -> Option<SplitResult> {
-    todo!("sggs_splitting implementation")
+    // Default: split using the selected literal of `other`.
+    sggs_splitting_on(_clause, _other, _other.selected)
+}
+
+/// SGGS-Splitting by a specific literal of the other clause.
+///
+/// This allows splitting on a non-selected literal, which is permitted by SGGS
+/// to expose intersections and enable deletion (Bonacina 2016, Sect. 4.2).
+pub fn sggs_splitting_on(
+    _clause: &ConstrainedClause,
+    _other: &ConstrainedClause,
+    _other_lit_idx: usize,
+) -> Option<SplitResult> {
+    todo!("sggs_splitting_on implementation")
 }
 
 #[cfg(test)]
@@ -94,5 +107,39 @@ mod tests {
         for part in &result.parts {
             assert!(part.constraint.is_satisfiable());
         }
+    }
+
+    #[test]
+    fn test_splitting_on_non_selected_literal() {
+        // SGGS allows splitting on a non-selected literal to expose intersections.
+        // Source: bonacina2016.pdf, discussion before Definition 24 (s-splitting on non-selected literal).
+        let clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos(
+                "P",
+                vec![Term::var("x"), Term::var("y")],
+            )]),
+            Constraint::True,
+            0,
+        );
+        let other = ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::pos("Q", vec![Term::var("u")]), // selected (index 0)
+                Literal::pos(
+                    "P",
+                    vec![
+                        Term::app("f", vec![Term::var("w")]),
+                        Term::app("g", vec![Term::var("z")]),
+                    ],
+                ),
+            ]),
+            Constraint::True,
+            0,
+        );
+
+        let result = sggs_splitting_on(&clause, &other, 1).expect("expected split on non-selected");
+        assert!(
+            result.parts.len() >= 2,
+            "splitting on non-selected literal should be non-trivial"
+        );
     }
 }

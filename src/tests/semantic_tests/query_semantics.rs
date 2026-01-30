@@ -8,6 +8,7 @@ use super::*;
 // Queries are answered against the SGGS-constructed model (not refutation).
 
 use crate::sggs::{answer_query, Query, QueryResult};
+use crate::sggs::{answer_query_projected, ProjectionPolicy};
 use crate::unify::Substitution;
 use std::collections::HashSet;
 
@@ -193,6 +194,40 @@ fn negative_literal_query_true_when_atom_absent() {
 }
 
 #[test]
+fn negative_literal_query_with_shared_variable() {
+    // Source: spec.md (queries answered against constructed model; safe variable use).
+    // Safe query: variable appears in positive literal; negative filters results.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("b")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "q",
+        vec![Term::constant("a")],
+    )]));
+
+    let query = Query::new(vec![
+        Literal::pos("p", vec![Term::var("X")]),
+        Literal::neg("q", vec![Term::var("X")]),
+    ]);
+    match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
+        QueryResult::Answers(ans) => {
+            let x = Var::new("X");
+            assert_eq!(ans.len(), 1, "expected exactly one answer");
+            assert_eq!(ans[0].lookup(&x), Some(&Term::constant("b")));
+            assert_no_spurious_bindings(&ans, &query.variables());
+            assert_no_duplicates(&ans);
+        }
+        other => panic!("Expected answers, got {:?}", other),
+    }
+}
+
+#[test]
 fn query_respects_resource_limit() {
     let theory = crate::theory::Theory::new();
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
@@ -204,4 +239,55 @@ fn query_respects_resource_limit() {
         QueryResult::ResourceLimit => {}
         other => panic!("Expected resource limit, got {:?}", other),
     }
+}
+
+#[test]
+fn projected_query_filters_internal_symbols() {
+    // Source: spec.md (ProjectionPolicy: OnlyUserSymbols).
+    let mut theory = crate::theory::Theory::new();
+    // Use an internal Skolem-like constant not present in the user signature.
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("$sk0")],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let user_sig = crate::syntax::Signature::empty();
+
+    let result = answer_query_projected(
+        &theory,
+        &query,
+        crate::sggs::DerivationConfig::default(),
+        &user_sig,
+        ProjectionPolicy::OnlyUserSymbols,
+    );
+    assert!(
+        matches!(result, QueryResult::NoAnswers | QueryResult::ResourceLimit),
+        "internal witnesses should not be exposed under OnlyUserSymbols"
+    );
+}
+
+#[test]
+fn projected_query_allows_internal_symbols_when_enabled() {
+    // Source: spec.md (ProjectionPolicy: AllowInternal).
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("$sk0")],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let user_sig = crate::syntax::Signature::empty();
+
+    let result = answer_query_projected(
+        &theory,
+        &query,
+        crate::sggs::DerivationConfig::default(),
+        &user_sig,
+        ProjectionPolicy::AllowInternal,
+    );
+    assert!(
+        matches!(result, QueryResult::Answers(_)),
+        "internal witnesses should be allowed under AllowInternal"
+    );
 }

@@ -37,34 +37,44 @@ fn assignment_maps_i_true_literals_to_justification() {
 #[test]
 fn assignment_selected_i_true_is_rightmost_dependency() {
     // Under I⁻, negative literals are I-true. Selected I-true should be assigned rightmost.
+    // Source: bonacina2016.pdf, Definition 9 (Assignment), condition (4).
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
-    let c1 = ConstrainedClause::with_constraint(
+    // Two identical selected premises make ¬P(a) depend on multiple clauses.
+    // This makes the "rightmost" condition meaningful without inventing spurious dependencies.
+    trail.push(ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
         Constraint::True,
         0,
-    );
-    let c2 = ConstrainedClause::with_constraint(
-        Clause::new(vec![Literal::pos("Q", vec![Term::constant("a")])]),
+    ));
+    trail.push(ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
         Constraint::True,
         0,
-    );
-    let c3 = ConstrainedClause::with_constraint(
+    ));
+    // Clause with two I-true literals; select one of them.
+    trail.push(ConstrainedClause::with_constraint(
         Clause::new(vec![
             Literal::neg("P", vec![Term::constant("a")]),
-            Literal::neg("Q", vec![Term::constant("a")]),
+            Literal::neg("P", vec![Term::constant("a")]),
         ]),
         Constraint::True,
-        0, // select ¬P(a) (I-true)
-    );
-    trail.push(c1);
-    trail.push(c2);
-    trail.push(c3);
+        0,
+    ));
 
     let assigns = compute_assignments(&trail);
-    // Clause index 2, literal 0 (selected) should be assigned to rightmost dependency (index 1).
-    assert_eq!(assigns.assigned_to(2, 0), Some(1));
-    // The other literal depends on clause 1 as well.
-    assert_eq!(assigns.assigned_to(2, 1), Some(1));
+    let j = 2; // clause index of the I-all-true clause
+    let selected_idx = 0;
+    let selected_assigned = assigns.assigned_to(j, selected_idx).expect("selected assigned");
+    // Condition (4) Def. 9: selected I-true literal assigned rightmost among assignments in clause.
+    let mut max_assigned = selected_assigned;
+    for lit_idx in 0..trail.clauses()[j].clause.literals.len() {
+        if let Some(k) = assigns.assigned_to(j, lit_idx) {
+            if k > max_assigned {
+                max_assigned = k;
+            }
+        }
+    }
+    assert_eq!(selected_assigned, max_assigned);
 }
 
 #[test]

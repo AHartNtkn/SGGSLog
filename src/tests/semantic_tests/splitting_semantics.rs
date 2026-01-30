@@ -369,3 +369,38 @@ fn d_split_representative_survives_deletion() {
         "d-split representative should survive deletion"
     );
 }
+
+#[test]
+fn splitting_can_target_non_selected_literal() {
+    // Bonacina 2016 notes s-splitting may split on a non-selected literal to expose intersections.
+    // Source: bonacina2016.pdf, discussion around s-splitting (Sect. 4.2).
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::var("x"), Term::var("y")],
+        )]),
+        Constraint::True,
+        0,
+    );
+    let other = ConstrainedClause::with_constraint(
+        Clause::new(vec![
+            Literal::pos("Q", vec![Term::var("u")]), // selected (index 0)
+            Literal::pos(
+                "P",
+                vec![
+                    Term::app("f", vec![Term::var("w")]),
+                    Term::app("g", vec![Term::var("z")]),
+                ],
+            ),
+        ]),
+        Constraint::True,
+        0,
+    );
+
+    let split = crate::sggs::sggs_splitting_on(&clause, &other, 1)
+        .expect("expected split on non-selected literal");
+    assert!(
+        split.parts.len() >= 2,
+        "non-selected literal split should be non-trivial"
+    );
+}

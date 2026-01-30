@@ -88,14 +88,14 @@ fn session_sets_initial_interpretation() {
         "initial_interp".to_string(),
         "positive".to_string(),
     ));
-    let result = session
+    let err = session
         .execute_statement(stmt)
-        .expect("execute_statement failed");
-    assert!(matches!(result, ExecResult::DirectiveApplied(_)));
-    assert!(matches!(
-        session.config().initial_interp,
-        crate::sggs::InitialInterpretation::AllPositive
-    ));
+        .expect_err("expected initial_interp to be rejected for end-user API");
+    assert!(
+        err.message.to_lowercase().contains("initial_interp")
+            || err.message.to_lowercase().contains("initial"),
+        "error should mention unsupported option"
+    );
 }
 
 #[test]

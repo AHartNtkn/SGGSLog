@@ -102,6 +102,27 @@ fn atomic_constraint_evaluate_with_substitution() {
 }
 
 #[test]
+fn atomic_constraint_root_equals_with_substitution() {
+    // Source: Semantically_Guided_Goal_Sensitive_Reaso.pdf, Definition 1 (Constraint).
+    let c = AtomicConstraint::RootEquals(Term::var("X"), "f".to_string());
+    let mut subst = Substitution::empty();
+    subst.bind(Var::new("X"), Term::app("f", vec![Term::constant("a")]));
+    assert_eq!(c.evaluate(&subst), Some(true));
+}
+
+#[test]
+fn constraint_simplify_with_true_false_identities() {
+    let c = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("y"),
+    ));
+    assert_eq!(c.clone().and(Constraint::True).simplify(), c);
+    assert_eq!(c.clone().or(Constraint::False).simplify(), c);
+    assert_eq!(c.clone().and(Constraint::False).simplify(), Constraint::False);
+    assert_eq!(c.clone().or(Constraint::True).simplify(), Constraint::True);
+}
+
+#[test]
 fn constraint_simplify_double_negation() {
     let c = Constraint::Atomic(AtomicConstraint::NotIdentical(
         Term::var("x"),
