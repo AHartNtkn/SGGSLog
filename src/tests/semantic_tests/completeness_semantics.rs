@@ -180,7 +180,7 @@ fn satisfiable_datalog() {
             );
         }
         DerivationResult::ResourceLimit => {
-            // Acceptable for bounded computation
+            panic!("[BW20] Stratified/Datalog should terminate without resource limit");
         }
         DerivationResult::Unsatisfiable => {
             panic!("[BW20] Datalog program should be satisfiable");

@@ -35,11 +35,11 @@ fn test_from_statements_dedup_alpha_equivalent() {
     let stmts = vec![Statement::Clause(c1), Statement::Clause(c2)];
 
     let theory = Theory::from_statements(&stmts).expect("expected theory");
-    // Alpha-deduplication is an optimization; accept either behavior.
-    let len = theory.clauses().len();
-    assert!(
-        len == 1 || len == 2,
-        "theory should contain one or both alpha-equivalent clauses"
+    // Alpha-equivalent clauses should be deduplicated.
+    assert_eq!(
+        theory.clauses().len(),
+        1,
+        "alpha-equivalent clauses should be deduplicated"
     );
 }
 

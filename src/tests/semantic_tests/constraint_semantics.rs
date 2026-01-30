@@ -107,3 +107,29 @@ fn constraint_simplify_double_negation() {
     let nn = Constraint::Not(Box::new(Constraint::Not(Box::new(c.clone()))));
     assert_eq!(nn.simplify(), c);
 }
+
+#[test]
+fn constraint_or_is_satisfiable_when_one_branch_is() {
+    let unsat = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("x"),
+    ));
+    let sat = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("y"),
+    ));
+    let or = unsat.or(sat);
+    assert!(or.is_satisfiable(), "disjunction should be satisfiable if any branch is");
+}
+
+#[test]
+fn constraint_and_negation_do_not_intersect() {
+    let c = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("y"),
+    ));
+    assert!(
+        !c.intersects(&c.clone().not()),
+        "constraint and its negation should have empty intersection"
+    );
+}

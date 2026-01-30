@@ -1,6 +1,7 @@
 use sggslog::parser::{parse_file, parse_query};
 use sggslog::parser::Statement;
 use sggslog::syntax::{Clause, Literal, Term, Var};
+use std::collections::HashMap;
 
 fn single_clause(src: &str) -> Clause {
     let stmts = parse_file(src).expect("parse_file failed");
@@ -9,6 +10,47 @@ fn single_clause(src: &str) -> Clause {
         Statement::Clause(c) => c.clone(),
         _ => panic!("expected a clause"),
     }
+}
+
+fn clauses_from_statements(stmts: Vec<Statement>) -> Vec<Clause> {
+    stmts
+        .into_iter()
+        .map(|s| match s {
+            Statement::Clause(c) => c,
+            _ => panic!("expected clause"),
+        })
+        .collect()
+}
+
+fn eval_literal(lit: &Literal, env: &HashMap<String, bool>) -> bool {
+    if !lit.atom.args.is_empty() {
+        panic!("propositional evaluator only supports zero-ary predicates");
+    }
+    let val = *env
+        .get(lit.atom.predicate.as_str())
+        .expect("missing variable assignment");
+    if lit.positive { val } else { !val }
+}
+
+fn eval_clause(clause: &Clause, env: &HashMap<String, bool>) -> bool {
+    clause.literals.iter().any(|l| eval_literal(l, env))
+}
+
+fn eval_cnf(clauses: &[Clause], env: &HashMap<String, bool>) -> bool {
+    clauses.iter().all(|c| eval_clause(c, env))
+}
+
+fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
+    let mut envs = Vec::new();
+    let n = vars.len();
+    for mask in 0..(1 << n) {
+        let mut env = HashMap::new();
+        for (i, name) in vars.iter().enumerate() {
+            env.insert((*name).to_string(), (mask & (1 << i)) != 0);
+        }
+        envs.push(env);
+    }
+    envs
 }
 
 #[test]
@@ -45,29 +87,13 @@ fn test_implication_to_clause() {
 
 #[test]
 fn test_distribution_to_cnf() {
-    // P ∨ (Q ∧ R) => (P ∨ Q) ∧ (P ∨ R)
-    let stmts = parse_file("p ∨ (q ∧ r)").expect("parse_file failed");
-    assert!(
-        stmts.len() >= 2,
-        "CNF distribution should produce at least the two expected clauses"
-    );
-    let mut clauses = stmts
-        .into_iter()
-        .map(|s| match s {
-            Statement::Clause(c) => c,
-            _ => panic!("expected clause"),
-        })
-        .collect::<Vec<_>>();
-    clauses.sort_by_key(|c| c.literals.len());
-
-    assert!(clauses.iter().any(|c| {
-        c.literals == vec![Literal::pos("p", vec![]), Literal::pos("q", vec![])]
-            || c.literals == vec![Literal::pos("q", vec![]), Literal::pos("p", vec![])]
-    }));
-    assert!(clauses.iter().any(|c| {
-        c.literals == vec![Literal::pos("p", vec![]), Literal::pos("r", vec![])]
-            || c.literals == vec![Literal::pos("r", vec![]), Literal::pos("p", vec![])]
-    }));
+    // P ∨ (Q ∧ R) ≡ (P ∨ Q) ∧ (P ∨ R) (semantic equivalence).
+    let clauses = clauses_from_statements(parse_file("p ∨ (q ∧ r)").expect("parse_file failed"));
+    for env in all_assignments(&["p", "q", "r"]) {
+        let original = env["p"] || (env["q"] && env["r"]);
+        let cnf = eval_cnf(&clauses, &env);
+        assert_eq!(original, cnf, "CNF must be semantically equivalent");
+    }
 }
 
 #[test]
@@ -125,24 +151,12 @@ q
 #[test]
 fn test_operator_precedence_and_distribution() {
     // ∧ should bind tighter than ∨: p ∨ q ∧ r == p ∨ (q ∧ r)
-    let stmts = parse_file("p ∨ q ∧ r").expect("parse_file failed");
-    // Expect CNF equivalent to (p ∨ q) ∧ (p ∨ r)
-    assert!(stmts.len() >= 2);
-    let clauses = stmts
-        .into_iter()
-        .map(|s| match s {
-            Statement::Clause(c) => c,
-            _ => panic!("expected clause"),
-        })
-        .collect::<Vec<_>>();
-    assert!(clauses.iter().any(|c| {
-        c.literals == vec![Literal::pos("p", vec![]), Literal::pos("q", vec![])]
-            || c.literals == vec![Literal::pos("q", vec![]), Literal::pos("p", vec![])]
-    }));
-    assert!(clauses.iter().any(|c| {
-        c.literals == vec![Literal::pos("p", vec![]), Literal::pos("r", vec![])]
-            || c.literals == vec![Literal::pos("r", vec![]), Literal::pos("p", vec![])]
-    }));
+    let clauses = clauses_from_statements(parse_file("p ∨ q ∧ r").expect("parse_file failed"));
+    for env in all_assignments(&["p", "q", "r"]) {
+        let original = env["p"] || (env["q"] && env["r"]);
+        let cnf = eval_cnf(&clauses, &env);
+        assert_eq!(original, cnf, "CNF must be semantically equivalent");
+    }
 }
 
 #[test]
@@ -260,31 +274,31 @@ fn test_exists_before_forall_skolem_constant() {
 
 #[test]
 fn test_nested_distribution_four_clauses() {
-    // (p ∧ q) ∨ (r ∧ s) => 4 clauses: p∨r, p∨s, q∨r, q∨s
-    let stmts = parse_file("(p ∧ q) ∨ (r ∧ s)").expect("parse_file failed");
-    assert!(
-        stmts.len() >= 4,
-        "CNF distribution should include the four expected clauses"
-    );
-    let mut clauses = stmts
-        .into_iter()
-        .map(|s| match s {
-            Statement::Clause(c) => c,
-            _ => panic!("expected clause"),
-        })
-        .collect::<Vec<_>>();
-    clauses.sort_by_key(|c| c.literals.len());
-
-    let expected = vec![
-        vec![Literal::pos("p", vec![]), Literal::pos("r", vec![])],
-        vec![Literal::pos("p", vec![]), Literal::pos("s", vec![])],
-        vec![Literal::pos("q", vec![]), Literal::pos("r", vec![])],
-        vec![Literal::pos("q", vec![]), Literal::pos("s", vec![])],
-    ];
-    for want in expected {
-        assert!(clauses.iter().any(|c| {
-            c.literals == want
-                || c.literals == vec![want[1].clone(), want[0].clone()]
-        }));
+    // (p ∧ q) ∨ (r ∧ s) semantic equivalence with produced CNF.
+    let clauses =
+        clauses_from_statements(parse_file("(p ∧ q) ∨ (r ∧ s)").expect("parse_file failed"));
+    for env in all_assignments(&["p", "q", "r", "s"]) {
+        let original = (env["p"] && env["q"]) || (env["r"] && env["s"]);
+        let cnf = eval_cnf(&clauses, &env);
+        assert_eq!(original, cnf, "CNF must be semantically equivalent");
     }
+}
+
+#[test]
+fn test_skolem_symbols_fresh_across_clauses() {
+    // Each existential should introduce a fresh Skolem symbol (global uniqueness).
+    let stmts = parse_file("∃X (p X)\n∃Y (q Y)").expect("parse_file failed");
+    let clauses = clauses_from_statements(stmts);
+    assert_eq!(clauses.len(), 2);
+    let sk1 = match &clauses[0].literals[0].atom.args[0] {
+        Term::Const(c) => c.name().to_string(),
+        Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
+        _ => panic!("expected Skolem constant in first clause"),
+    };
+    let sk2 = match &clauses[1].literals[0].atom.args[0] {
+        Term::Const(c) => c.name().to_string(),
+        Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
+        _ => panic!("expected Skolem constant in second clause"),
+    };
+    assert_ne!(sk1, sk2, "distinct existentials require distinct Skolem symbols");
 }

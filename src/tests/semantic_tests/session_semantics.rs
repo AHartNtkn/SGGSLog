@@ -6,6 +6,9 @@ use super::*;
 
 use crate::parser::{Statement, Directive};
 use crate::session::{ExecResult, Session};
+use crate::session::DirectiveResult;
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn session_executes_clause_statement() {
@@ -67,4 +70,31 @@ fn session_load_file_error_does_not_mutate_theory() {
     assert!(!err.message.is_empty());
     let after = session.theory().clauses().len();
     assert_eq!(before, after, "theory should be unchanged on load error");
+}
+
+#[test]
+fn session_load_file_adds_clauses() {
+    let mut session = Session::new();
+    let before = session.theory().clauses().len();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("sggslog_test_{}.sggs", unique));
+    fs::write(&path, "p\nq\n").expect("write test file");
+
+    let result = session
+        .load_file(path.to_str().expect("path string"))
+        .expect("load_file failed");
+    match result {
+        DirectiveResult::Loaded { path: loaded, clauses } => {
+            assert!(loaded.contains("sggslog_test_"), "loaded path should be reported");
+            assert_eq!(clauses, 2, "load_file should report number of clauses added");
+        }
+        other => panic!("Expected Loaded directive result, got {:?}", other),
+    }
+    let after = session.theory().clauses().len();
+    assert_eq!(after, before + 2, "load_file should add clauses to theory");
+
+    let _ = fs::remove_file(&path);
 }

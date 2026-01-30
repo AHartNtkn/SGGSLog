@@ -8,6 +8,34 @@ use super::*;
 // Queries are answered against the SGGS-constructed model (not refutation).
 
 use crate::sggs::{answer_query, Query, QueryResult};
+use crate::unify::Substitution;
+use std::collections::HashSet;
+
+fn subst_key(s: &Substitution) -> String {
+    let mut entries: Vec<String> = s
+        .domain()
+        .into_iter()
+        .filter_map(|v| s.lookup(v).map(|t| format!("{}={:?}", v.name(), t)))
+        .collect();
+    entries.sort();
+    entries.join(",")
+}
+
+fn assert_no_spurious_bindings(ans: &[Substitution], query_vars: &HashSet<Var>) {
+    for s in ans {
+        for v in s.domain() {
+            assert!(
+                query_vars.contains(v),
+                "answers must not bind variables not in the query"
+            );
+        }
+    }
+}
+
+fn assert_no_duplicates(ans: &[Substitution]) {
+    let keys: HashSet<String> = ans.iter().map(subst_key).collect();
+    assert_eq!(keys.len(), ans.len(), "answers must be duplicate-free");
+}
 
 #[test]
 fn ground_query_proved_when_entailed() {
@@ -20,10 +48,10 @@ fn ground_query_proved_when_entailed() {
     let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
     match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
         QueryResult::Answers(ans) => {
-            assert!(
-                ans.iter().any(|s| s.domain().is_empty()),
-                "ground proof should include empty substitution"
-            );
+            assert_eq!(ans.len(), 1, "ground query should yield exactly one answer");
+            assert!(ans[0].domain().is_empty(), "ground answer should be empty substitution");
+            assert_no_spurious_bindings(&ans, &query.variables());
+            assert_no_duplicates(&ans);
         }
         other => panic!("Expected query proved, got {:?}", other),
     }
@@ -51,11 +79,14 @@ fn non_ground_query_returns_instance_answer() {
     match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
         QueryResult::Answers(ans) => {
             let x = Var::new("X");
-            assert!(
-                ans.iter()
-                    .any(|s| s.lookup(&x) == Some(&Term::constant("a"))),
+            assert_eq!(ans.len(), 1, "expected exactly one answer");
+            assert_eq!(
+                ans[0].lookup(&x),
+                Some(&Term::constant("a")),
                 "expected an answer binding X to a"
             );
+            assert_no_spurious_bindings(&ans, &query.variables());
+            assert_no_duplicates(&ans);
         }
         other => panic!("Expected answers, got {:?}", other),
     }
@@ -76,15 +107,44 @@ fn conjunctive_query_multiple_answers() {
     match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
         QueryResult::Answers(ans) => {
             let x = Var::new("X");
-            let mut found = 0;
-            for s in ans {
-                if s.lookup(&x) == Some(&Term::constant("a"))
-                    || s.lookup(&x) == Some(&Term::constant("b"))
-                {
-                    found += 1;
-                }
-            }
-            assert!(found >= 2, "expected answers for a and b");
+            assert_eq!(ans.len(), 2, "expected exactly two answers");
+            assert!(ans.iter().any(|s| s.lookup(&x) == Some(&Term::constant("a"))));
+            assert!(ans.iter().any(|s| s.lookup(&x) == Some(&Term::constant("b"))));
+            assert_no_spurious_bindings(&ans, &query.variables());
+            assert_no_duplicates(&ans);
+        }
+        other => panic!("Expected answers, got {:?}", other),
+    }
+}
+
+#[test]
+fn conjunctive_query_joins_answers() {
+    // Theory: p(a), p(b), q(a). Query: p(X) ∧ q(X) should yield X=a only.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("b")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "q",
+        vec![Term::constant("a")],
+    )]));
+
+    let query = Query::new(vec![
+        Literal::pos("p", vec![Term::var("X")]),
+        Literal::pos("q", vec![Term::var("X")]),
+    ]);
+    match answer_query(&theory, &query, crate::sggs::DerivationConfig::default()) {
+        QueryResult::Answers(ans) => {
+            let x = Var::new("X");
+            assert_eq!(ans.len(), 1, "expected exactly one joined answer");
+            assert_eq!(ans[0].lookup(&x), Some(&Term::constant("a")));
+            assert_no_spurious_bindings(&ans, &query.variables());
+            assert_no_duplicates(&ans);
         }
         other => panic!("Expected answers, got {:?}", other),
     }
