@@ -129,3 +129,30 @@ fn renaming_rejects_non_bijective_or_non_var() {
     non_var.bind(Var::new("X"), Term::constant("a"));
     assert!(!non_var.is_renaming(), "Mapping to non-var is not a renaming");
 }
+
+#[test]
+fn renaming_requires_sort_preservation() {
+    let mut rename = Substitution::empty();
+    rename.bind(
+        Var::new_with_sort("X", "s1"),
+        Term::Var(Var::new_with_sort("Y", "s2")),
+    );
+    assert!(
+        !rename.is_renaming(),
+        "Renaming must preserve sorts (s1 -> s2 is invalid)"
+    );
+}
+
+#[test]
+fn renaming_allows_sort_preserving_bijection() {
+    let mut rename = Substitution::empty();
+    rename.bind(
+        Var::new_with_sort("X", "s1"),
+        Term::Var(Var::new_with_sort("Y", "s1")),
+    );
+    rename.bind(
+        Var::new_with_sort("Y", "s1"),
+        Term::Var(Var::new_with_sort("X", "s1")),
+    );
+    assert!(rename.is_renaming(), "Sort-preserving swap is a renaming");
+}

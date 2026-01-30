@@ -8,6 +8,7 @@ pub mod unify;
 pub mod constraint;
 pub mod sggs;
 pub mod parser;
+pub mod normalize;
 pub mod theory;
 pub mod repl;
 pub mod jupyter;

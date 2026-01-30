@@ -1,6 +1,7 @@
 //! Session: end-to-end API for loading theories and answering queries.
 
 use crate::parser::{parse_file, Statement, Directive};
+use crate::normalize::{clausify_statement, clausify_statements};
 use crate::sggs::{answer_query, DerivationConfig, Query, QueryResult};
 use crate::syntax::Literal;
 use crate::theory::Theory;

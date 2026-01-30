@@ -61,4 +61,22 @@ mod tests {
 
         assert!(sggs_factoring(&clause, 1).is_none());
     }
+
+    #[test]
+    fn test_factoring_rejects_unsatisfiable_constraints() {
+        // If factoring would violate the clause constraint, it should not apply.
+        let clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::pos("P", vec![Term::var("X")]),
+                Literal::pos("P", vec![Term::constant("a")]),
+            ]),
+            Constraint::Atomic(crate::constraint::AtomicConstraint::NotIdentical(
+                Term::var("X"),
+                Term::constant("a"),
+            )),
+            0,
+        );
+
+        assert!(sggs_factoring(&clause, 1).is_none());
+    }
 }

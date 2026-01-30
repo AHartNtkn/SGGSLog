@@ -1,4 +1,5 @@
 use super::*;
+use crate::syntax::Constant;
 
 // =============================================================================
 // UNIFICATION SEMANTIC PROPERTIES
@@ -183,6 +184,39 @@ fn occurs_check_different_variables_ok() {
     assert!(
         unify(&t1, &t2).is_success(),
         "X = f(Y) should succeed - no cycle"
+    );
+}
+
+// -------------------------------------------------------------------------
+// Property: Sorts are preserved by unification
+// -------------------------------------------------------------------------
+#[test]
+fn unification_rejects_sort_mismatch_var_const() {
+    let x = Term::Var(Var::new_with_sort("X", "s1"));
+    let a = Term::Const(Constant::new_with_sort("a", "s2"));
+    assert!(
+        unify(&x, &a).is_failure(),
+        "Sort mismatch should fail unification"
+    );
+}
+
+#[test]
+fn unification_accepts_sort_match_var_const() {
+    let x = Term::Var(Var::new_with_sort("X", "s1"));
+    let a = Term::Const(Constant::new_with_sort("a", "s1"));
+    assert!(
+        unify(&x, &a).is_success(),
+        "Matching sorts should allow unification"
+    );
+}
+
+#[test]
+fn unification_rejects_result_sort_mismatch() {
+    let t1 = Term::app_with_sort("f", "s1", vec![Term::constant("a")]);
+    let t2 = Term::app_with_sort("f", "s2", vec![Term::constant("a")]);
+    assert!(
+        unify(&t1, &t2).is_failure(),
+        "Function result sort mismatch should fail unification"
     );
 }
 

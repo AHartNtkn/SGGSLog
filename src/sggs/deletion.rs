@@ -128,4 +128,18 @@ mod tests {
         let clause = &trail.clauses()[0];
         assert!(!is_disposable(clause, &trail));
     }
+
+    #[test]
+    fn test_deletion_removes_unsatisfiable_constraint_clause() {
+        // A clause with no constrained ground instances is disposable.
+        let mut trail = Trail::new(crate::sggs::InitialInterpretation::AllNegative);
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+            Constraint::False,
+            0,
+        ));
+
+        sggs_deletion(&mut trail);
+        assert!(trail.clauses().is_empty());
+    }
 }

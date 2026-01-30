@@ -77,14 +77,16 @@ fn extension_uses_simultaneous_unification_of_i_true_literals() {
 
     match sggs_extension(&trail, &theory) {
         ExtensionResult::Extended(cc) => {
-            assert_eq!(
-                cc.clause.literals,
-                vec![
-                    Literal::neg("P", vec![Term::constant("a")]),
-                    Literal::neg("Q", vec![Term::constant("b")]),
-                    Literal::pos("R", vec![Term::constant("a"), Term::constant("b")]),
-                ]
-            );
+            let got: std::collections::HashSet<_> =
+                cc.clause.literals.clone().into_iter().collect();
+            let expected: std::collections::HashSet<_> = vec![
+                Literal::neg("P", vec![Term::constant("a")]),
+                Literal::neg("Q", vec![Term::constant("b")]),
+                Literal::pos("R", vec![Term::constant("a"), Term::constant("b")]),
+            ]
+            .into_iter()
+            .collect();
+            assert_eq!(got, expected);
             assert_eq!(
                 cc.selected_literal(),
                 &Literal::pos("R", vec![Term::constant("a"), Term::constant("b")])

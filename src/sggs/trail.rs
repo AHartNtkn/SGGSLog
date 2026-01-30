@@ -34,6 +34,11 @@ pub struct TrailInterpretation<'a> {
     trail: &'a Trail,
 }
 
+/// The partial interpretation I^p induced by a trail.
+pub struct PartialInterpretation<'a> {
+    trail: &'a Trail,
+}
+
 impl Trail {
     /// Create an empty trail with the given initial interpretation.
     pub fn new(interp: InitialInterpretation) -> Self {
@@ -70,6 +75,11 @@ impl Trail {
         todo!("Trail::interpretation implementation")
     }
 
+    /// Get the partial interpretation I^p induced by this trail.
+    pub fn partial_interpretation(&self) -> PartialInterpretation {
+        todo!("Trail::partial_interpretation implementation")
+    }
+
     /// Compute the length of the disjoint prefix.
     pub fn disjoint_prefix_length(&self) -> usize {
         todo!("Trail::disjoint_prefix_length implementation")
@@ -83,6 +93,18 @@ impl Trail {
     /// Find a conflict clause in the trail.
     pub fn find_conflict(&self) -> Option<usize> {
         todo!("Trail::find_conflict implementation")
+    }
+
+    /// Check whether a ground literal is a proper instance of the selected literal
+    /// of the clause at the given index (Definitions 6-7).
+    pub fn is_proper_selected_instance(&self, _clause_idx: usize, _lit: &Literal) -> bool {
+        todo!("Trail::is_proper_selected_instance implementation")
+    }
+
+    /// Check whether a ground literal is a complementary instance of the selected literal
+    /// of the clause at the given index (Definition 8).
+    pub fn is_complementary_selected_instance(&self, _clause_idx: usize, _lit: &Literal) -> bool {
+        todo!("Trail::is_complementary_selected_instance implementation")
     }
 
     /// Get the clauses in this trail.
@@ -105,6 +127,13 @@ impl<'a> TrailInterpretation<'a> {
     /// Get I-false selected literals for extension.
     pub fn i_false_selected(&self) -> Vec<(usize, &'a Literal)> {
         todo!("TrailInterpretation::i_false_selected implementation")
+    }
+}
+
+impl<'a> PartialInterpretation<'a> {
+    /// Check whether a ground literal is in I^p(Γ).
+    pub fn contains_ground(&self, _lit: &Literal) -> bool {
+        todo!("PartialInterpretation::contains_ground implementation")
     }
 }
 

@@ -7,6 +7,7 @@ use super::*;
 use crate::parser::{Statement, Directive};
 use crate::session::{ExecResult, Session};
 use crate::session::DirectiveResult;
+use crate::syntax::{Atom, Formula};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -20,6 +21,21 @@ fn session_executes_clause_statement() {
     assert!(matches!(result, ExecResult::ClauseAdded));
     assert_eq!(session.theory().clauses().len(), 1);
     assert_eq!(session.theory().clauses()[0], clause);
+}
+
+#[test]
+fn session_executes_formula_statement() {
+    let mut session = Session::new();
+    let formula = Formula::atom(Atom::prop("p"));
+    let stmt = Statement::Formula(formula);
+
+    let result = session.execute_statement(stmt).expect("execute_statement failed");
+    assert!(matches!(result, ExecResult::ClauseAdded));
+    assert!(session
+        .theory()
+        .clauses()
+        .iter()
+        .any(|c| c.literals == vec![Literal::pos("p", vec![])]));
 }
 
 #[test]
@@ -95,6 +111,34 @@ fn session_load_file_adds_clauses() {
     }
     let after = session.theory().clauses().len();
     assert_eq!(after, before + 2, "load_file should add clauses to theory");
+
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn session_load_file_normalizes_formulas() {
+    let mut session = Session::new();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("sggslog_norm_{}.sggs", unique));
+    fs::write(&path, "p -> q\n").expect("write test file");
+
+    let _ = session
+        .load_file(path.to_str().expect("path string"))
+        .expect("load_file failed");
+
+    let expected = Clause::new(vec![
+        Literal::neg("p", vec![]),
+        Literal::pos("q", vec![]),
+    ]);
+    let expected_set: std::collections::HashSet<_> = expected.literals.into_iter().collect();
+    let found = session.theory().clauses().iter().any(|c| {
+        let got: std::collections::HashSet<_> = c.literals.iter().cloned().collect();
+        got == expected_set
+    });
+    assert!(found, "expected normalized clause ¬p ∨ q");
 
     let _ = fs::remove_file(&path);
 }

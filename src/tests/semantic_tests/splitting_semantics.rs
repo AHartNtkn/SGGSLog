@@ -94,6 +94,39 @@ fn splitting_partition_is_disjoint_and_isolates_intersection() {
 }
 
 #[test]
+fn splitting_propagates_constraints_for_intersection() {
+    // Split P(x) against P(a): expect one part with x = a and one with x ≠ a.
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::True,
+        0,
+    );
+    let other = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    );
+
+    let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
+    let x_eq_a = Constraint::Atomic(AtomicConstraint::Identical(
+        Term::var("x"),
+        Term::constant("a"),
+    ));
+
+    let mut intersects = 0;
+    let mut disjoint = 0;
+    for part in &result.parts {
+        if part.constraint.clone().and(x_eq_a.clone()).is_satisfiable() {
+            intersects += 1;
+        } else {
+            disjoint += 1;
+        }
+    }
+    assert_eq!(intersects, 1, "exactly one split part should allow x = a");
+    assert!(disjoint >= 1, "at least one split part should exclude x = a");
+}
+
+#[test]
 fn splitting_returns_none_for_disjoint_literals() {
     let clause = ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),

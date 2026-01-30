@@ -198,6 +198,53 @@ fn sort_restrained_requires_negative_dominance_for_infinite() {
 }
 
 #[test]
+fn sort_restrained_mixed_sorts_still_requires_infinite_dominance() {
+    use std::collections::HashSet;
+    let mut inf = HashSet::new();
+    inf.insert("s_inf".to_string());
+    let x = Term::Var(Var::new_with_sort("X", "s_inf"));
+    let y = Term::Var(Var::new_with_sort("Y", "s_fin"));
+    let fx = Term::app_with_sort("f", "s_inf", vec![x.clone()]);
+    let clause = Clause::new(vec![
+        Literal::neg("P", vec![x, y.clone()]),
+        Literal::pos("P", vec![fx, y]),
+    ]);
+    let order = SizeOrder;
+    assert!(!clause.is_sort_restrained(&inf, &order));
+}
+
+#[test]
+fn sort_refined_pvd_ignores_finite_sorts() {
+    use std::collections::HashSet;
+    let mut inf = HashSet::new();
+    inf.insert("s_inf".to_string());
+
+    let x = Term::Var(Var::new_with_sort("X", "s_inf"));
+    let y = Term::Var(Var::new_with_sort("Y", "s_fin"));
+    let fx = Term::app_with_sort("f", "s_inf", vec![x.clone()]);
+    let clause = Clause::new(vec![
+        Literal::neg("P", vec![fx, y.clone()]),
+        Literal::pos("P", vec![x, y]),
+    ]);
+    assert!(clause.is_sort_refined_pvd(&inf));
+}
+
+#[test]
+fn sort_refined_pvd_fails_when_infinite_depth_increases() {
+    use std::collections::HashSet;
+    let mut inf = HashSet::new();
+    inf.insert("s_inf".to_string());
+
+    let x = Term::Var(Var::new_with_sort("X", "s_inf"));
+    let fx = Term::app_with_sort("f", "s_inf", vec![x.clone()]);
+    let clause = Clause::new(vec![
+        Literal::neg("P", vec![x.clone()]),
+        Literal::pos("P", vec![fx]),
+    ]);
+    assert!(!clause.is_sort_refined_pvd(&inf));
+}
+
+#[test]
 fn theory_sort_restrained_and_sort_refined_pvd() {
     use std::collections::HashSet;
     let mut inf = HashSet::new();
@@ -271,4 +318,30 @@ fn theory_bdi_ground_is_true_and_depth_increase_is_false() {
         Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
     ]));
     assert!(!t2.is_bdi());
+}
+
+#[test]
+fn theory_bdi_allows_non_increasing_depth() {
+    let mut t = crate::theory::Theory::new();
+    t.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![Term::app("f", vec![Term::var("X")])]),
+        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
+    ]));
+    assert!(t.is_bdi());
+}
+
+#[test]
+fn theory_bdi_allows_multi_arity_when_depth_constant() {
+    let mut t = crate::theory::Theory::new();
+    t.add_clause(Clause::new(vec![
+        Literal::neg(
+            "P",
+            vec![Term::app("f", vec![Term::var("X"), Term::var("Y")])],
+        ),
+        Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::var("X"), Term::var("Y")])],
+        ),
+    ]));
+    assert!(t.is_bdi());
 }

@@ -48,3 +48,5 @@ mod proptests;
 mod query_semantics;
 mod session_semantics;
 mod fairness_semantics;
+mod partial_interpretation_semantics;
+mod conflict_solving_semantics;

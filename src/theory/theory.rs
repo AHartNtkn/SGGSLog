@@ -2,6 +2,7 @@
 
 use crate::syntax::Clause;
 use crate::parser::Statement;
+use crate::normalize::clausify_statement;
 
 /// A theory is a set of clauses.
 #[derive(Debug, Clone, Default)]

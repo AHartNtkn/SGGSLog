@@ -91,10 +91,10 @@ mod tests {
 
         match sggs_extension(&trail, &theory) {
             ExtensionResult::Conflict(cc) => {
-                assert_eq!(
-                    cc.clause.literals,
-                    vec![Literal::neg("P", vec![Term::constant("a")])]
-                );
+                let got: HashSet<_> = cc.clause.literals.clone().into_iter().collect();
+                let expected: HashSet<_> =
+                    vec![Literal::neg("P", vec![Term::constant("a")])].into_iter().collect();
+                assert_eq!(got, expected);
             }
             other => panic!("Expected conflict extension, got {:?}", other),
         }
@@ -115,10 +115,10 @@ mod tests {
 
         match sggs_extension(&trail, &theory) {
             ExtensionResult::Extended(cc) => {
-                assert_eq!(
-                    cc.clause.literals,
-                    vec![Literal::pos("P", vec![Term::constant("a")])]
-                );
+                let got: HashSet<_> = cc.clause.literals.clone().into_iter().collect();
+                let expected: HashSet<_> =
+                    vec![Literal::pos("P", vec![Term::constant("a")])].into_iter().collect();
+                assert_eq!(got, expected);
                 assert_eq!(
                     cc.selected_literal(),
                     &Literal::pos("P", vec![Term::constant("a")])

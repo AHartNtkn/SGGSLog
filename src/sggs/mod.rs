@@ -15,7 +15,7 @@ mod derivation;
 mod query;
 
 pub use interpretation::InitialInterpretation;
-pub use trail::{Trail, TrailInterpretation, TrailError};
+pub use trail::{Trail, TrailInterpretation, TrailError, PartialInterpretation};
 pub use constrained::ConstrainedClause;
 pub use extension::{sggs_extension, ExtensionResult};
 pub use resolution::{sggs_resolution, ResolutionResult};

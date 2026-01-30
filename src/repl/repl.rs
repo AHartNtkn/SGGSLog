@@ -62,4 +62,17 @@ mod tests {
     fn test_repl_default_constructs() {
         let _ = Repl::default();
     }
+
+    #[test]
+    fn test_repl_process_line_clause_and_query() {
+        let mut repl = Repl::new();
+        assert!(repl.process_line("p").is_ok());
+        assert!(repl.process_line("?- p").is_ok());
+    }
+
+    #[test]
+    fn test_repl_process_line_directive() {
+        let mut repl = Repl::new();
+        assert!(repl.process_line(":set max_steps 10").is_ok());
+    }
 }

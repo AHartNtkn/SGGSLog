@@ -52,4 +52,18 @@ mod tests {
     fn test_kernel_default_constructs() {
         let _ = Kernel::default();
     }
+
+    #[test]
+    fn test_kernel_execute_clause_and_query() {
+        let mut k = Kernel::new();
+        assert!(k.execute("p").is_ok());
+        assert!(k.execute("?- p").is_ok());
+    }
+
+    #[test]
+    fn test_kernel_execute_multiple_lines() {
+        let mut k = Kernel::new();
+        let code = "p\nq\n?- p";
+        assert!(k.execute(code).is_ok());
+    }
 }
