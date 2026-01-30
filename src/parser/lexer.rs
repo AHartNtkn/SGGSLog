@@ -89,6 +89,14 @@ mod tests {
     }
 
     #[test]
+    fn test_lex_ascii_and_operator() {
+        let mut lex = Lexer::new("p & q");
+        assert_eq!(lex.next_token().unwrap(), Token::Identifier("p".to_string()));
+        assert_eq!(lex.next_token().unwrap(), Token::And);
+        assert_eq!(lex.next_token().unwrap(), Token::Identifier("q".to_string()));
+    }
+
+    #[test]
     fn test_lex_query_token() {
         let mut lex = Lexer::new("?- (p a)");
         assert_eq!(lex.next_token().unwrap(), Token::Query);

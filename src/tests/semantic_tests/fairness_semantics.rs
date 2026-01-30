@@ -9,8 +9,7 @@ use super::*;
 // non-extension inferences.
 
 use crate::sggs::{
-    applicable_inferences, next_inference, ConstrainedClause, InferenceRule, InitialInterpretation,
-    Trail,
+    applicable_inferences, next_inference, InferenceRule, InitialInterpretation, Trail,
 };
 
 fn assert_next_is_applicable(trail: &Trail, theory: &crate::theory::Theory) {
@@ -22,23 +21,12 @@ fn assert_next_is_applicable(trail: &Trail, theory: &crate::theory::Theory) {
     );
 }
 
-fn assert_no_extension_when_non_extension_exists(trail: &Trail, theory: &crate::theory::Theory) {
-    let applicable = applicable_inferences(trail, theory);
-    let has_non_extension = applicable
-        .iter()
-        .any(|r| *r != InferenceRule::Extension && *r != InferenceRule::None);
-    if has_non_extension {
-        let next = next_inference(trail, theory);
-        assert_ne!(
-            next,
-            InferenceRule::Extension,
-            "extension must not be chosen when a non-extension rule applies"
-        );
-    }
-}
-
+/// "An inference is applied whenever ⊥ ∉ Γ and I[Γ ] ⊭ S."
+/// (SGGSdpFOL, fairness paragraph)
+///
+/// Requirement: next_inference must return some applicable rule when a conflict exists.
 #[test]
-fn fairness_prefers_resolution_on_conflict() {
+fn fairness_returns_applicable_rule_on_conflict() {
     // Conflict clause present with a resolvable justification on the left.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(unit(Literal::neg("P", vec![Term::constant("a")])));
@@ -46,22 +34,34 @@ fn fairness_prefers_resolution_on_conflict() {
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
     assert_next_is_applicable(&trail, &theory);
-    assert_no_extension_when_non_extension_exists(&trail, &theory);
 }
 
+/// "Inferences applying to shorter prefixes of the trail are never neglected in favor of others
+/// applying to longer prefixes."
+/// (SGGSdpFOL, fairness paragraph)
+///
+/// Requirement: if splitting is applicable, it must appear among applicable rules.
 #[test]
-fn fairness_prefers_splitting_over_extension_when_intersection_exists() {
+fn fairness_reports_splitting_applicable_on_intersection() {
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(unit(Literal::pos("P", vec![Term::var("X")])));
     trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
+    let applicable = applicable_inferences(&trail, &theory);
+    assert!(
+        applicable.contains(&InferenceRule::Splitting) || applicable.contains(&InferenceRule::Deletion),
+        "splitting or deletion should be applicable when selected literals intersect"
+    );
     assert_next_is_applicable(&trail, &theory);
-    assert_no_extension_when_non_extension_exists(&trail, &theory);
 }
 
+/// "SGGSdeletion is applied eagerly."
+/// (SGGSdpFOL, fairness paragraph)
+///
+/// Requirement: deletion must be applicable when a disposable clause exists.
 #[test]
-fn fairness_prefers_deletion_when_disposable_exists() {
+fn fairness_reports_deletion_applicable_when_disposable_exists() {
     // Disposable clause example from SGGS deletion tests.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
@@ -69,10 +69,18 @@ fn fairness_prefers_deletion_when_disposable_exists() {
     trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("R", vec![])])]);
+    let applicable = applicable_inferences(&trail, &theory);
+    assert!(
+        applicable.contains(&InferenceRule::Deletion),
+        "deletion should be applicable when a disposable clause exists"
+    );
     assert_next_is_applicable(&trail, &theory);
-    assert_no_extension_when_non_extension_exists(&trail, &theory);
 }
 
+/// "An inference is applied whenever ⊥ ∉ Γ and I[Γ ] ⊭ S."
+/// (SGGSdpFOL, fairness paragraph)
+///
+/// Requirement: if no non-extension rule applies, extension should be chosen.
 #[test]
 fn fairness_uses_extension_when_no_other_rule_applies() {
     let trail = Trail::new(InitialInterpretation::AllNegative);

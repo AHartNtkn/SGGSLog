@@ -9,8 +9,8 @@ use super::*;
 
 use crate::constraint::Constraint;
 use crate::sggs::{
-    sggs_extension, sggs_move, sggs_resolution, ConstrainedClause, ExtensionResult,
-    InitialInterpretation, ResolutionResult, Trail,
+    sggs_extension, sggs_factoring, sggs_left_split, sggs_move, sggs_resolution,
+    ConstrainedClause, ExtensionResult, InitialInterpretation, ResolutionResult, Trail,
 };
 
 #[test]
@@ -95,4 +95,74 @@ fn resolution_can_return_conflict_clause() {
         }
         other => panic!("Expected ConflictClause, got {:?}", other),
     }
+}
+
+#[test]
+fn conflict_solving_chain_with_factoring() {
+    // Source: SGGSdpFOL, Fig. 2 (factor) and conflict solving sequence.
+    // Conflict clause with duplicate same-sign literal should be factored before resolution.
+    let a = Term::constant("a");
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(unit(Literal::pos("P", vec![a.clone()])));
+
+    let conflict = ConstrainedClause::with_constraint(
+        Clause::new(vec![
+            Literal::neg("P", vec![a.clone()]),
+            Literal::neg("P", vec![a.clone()]),
+        ]),
+        Constraint::True,
+        0,
+    );
+
+    let factored = sggs_factoring(&conflict, 1).expect("expected factoring");
+    trail.push(factored.clone());
+
+    let res = sggs_resolution(&factored, &trail);
+    assert!(
+        matches!(res, ResolutionResult::EmptyClause),
+        "factoring should allow resolution to reach empty clause"
+    );
+}
+
+#[test]
+fn conflict_solving_chain_with_left_split() {
+    // Source: SGGSdpFOL, Fig. 2 (l-split) and conflict solving sequence.
+    // Left-split should isolate the intersection so resolution can eliminate the conflict.
+    let a = Term::constant("a");
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+    let base = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::True,
+        0,
+    );
+    trail.push(base.clone());
+
+    let conflict = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::neg("P", vec![a.clone()])]),
+        Constraint::True,
+        0,
+    );
+
+    let split = sggs_left_split(&base, &conflict).expect("expected left split");
+    let x_eq_a = Constraint::Atomic(crate::constraint::AtomicConstraint::Identical(
+        Term::var("x"),
+        a.clone(),
+    ));
+    let representative = split
+        .parts
+        .iter()
+        .find(|p| p.constraint.clone().and(x_eq_a.clone()).is_satisfiable())
+        .expect("expected representative intersecting with P(a)")
+        .clone();
+
+    let mut trail2 = Trail::new(InitialInterpretation::AllNegative);
+    trail2.push(representative.clone());
+    trail2.push(conflict.clone());
+
+    let res = sggs_resolution(&conflict, &trail2);
+    assert!(
+        matches!(res, ResolutionResult::EmptyClause | ResolutionResult::ConflictClause(_)),
+        "left split should enable conflict solving on the isolated intersection"
+    );
 }
