@@ -56,3 +56,40 @@ fn extension_returns_no_extension_when_complete() {
         other => panic!("Expected NoExtension on complete trail, got {:?}", other),
     }
 }
+
+#[test]
+fn extension_uses_simultaneous_unification_of_i_true_literals() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("Q", vec![Term::constant("b")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::neg("Q", vec![Term::var("Y")]),
+        Literal::pos("R", vec![Term::var("X"), Term::var("Y")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => {
+            assert_eq!(
+                cc.clause.literals,
+                vec![
+                    Literal::neg("P", vec![Term::constant("a")]),
+                    Literal::neg("Q", vec![Term::constant("b")]),
+                    Literal::pos("R", vec![Term::constant("a"), Term::constant("b")]),
+                ]
+            );
+            assert_eq!(
+                cc.selected_literal(),
+                &Literal::pos("R", vec![Term::constant("a"), Term::constant("b")])
+            );
+        }
+        other => panic!("Expected Extended for simultaneous unification, got {:?}", other),
+    }
+}

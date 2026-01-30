@@ -222,3 +222,15 @@ fn trail_not_complete_when_clause_unsatisfied() {
 
     assert!(!trail.is_complete(&theory));
 }
+
+#[test]
+fn trail_complete_when_satisfied_by_initial_interpretation() {
+    // Under I⁻, negative literals are true, so an empty trail satisfies ¬p(a).
+    let trail = Trail::new(InitialInterpretation::AllNegative);
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::neg(
+        "p",
+        vec![Term::constant("a")],
+    )])]);
+
+    assert!(trail.is_complete(&theory));
+}

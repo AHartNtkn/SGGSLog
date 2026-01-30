@@ -119,4 +119,13 @@ mod tests {
         assert_eq!(count_p, 1);
         assert_eq!(count_not_q, 1);
     }
+
+    #[test]
+    fn test_single_clause_not_disposable() {
+        // By Def. 6, no clause in the disjoint prefix is disposable.
+        let mut trail = Trail::new(crate::sggs::InitialInterpretation::AllNegative);
+        trail.push(unit(Literal::pos("P", vec![Term::var("x")])));
+        let clause = &trail.clauses()[0];
+        assert!(!is_disposable(clause, &trail));
+    }
 }

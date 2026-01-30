@@ -41,7 +41,7 @@ impl InitialInterpretation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::syntax::{Literal, Term};
+    use crate::syntax::{Atom, Literal, Term};
 
     #[test]
     fn test_all_negative_interpretation_polarity() {
@@ -63,5 +63,14 @@ mod tests {
         let neg = Literal::neg("p", vec![Term::constant("a")]);
         assert!(interp.is_true(&pos));
         assert!(interp.is_false(&neg));
+    }
+
+    #[test]
+    fn test_atom_truth_all_positive_and_negative() {
+        let atom = Atom::new("p", vec![Term::constant("a")]);
+        let pos = InitialInterpretation::AllPositive;
+        let neg = InitialInterpretation::AllNegative;
+        assert!(pos.atom_is_true(&atom));
+        assert!(!neg.atom_is_true(&atom));
     }
 }

@@ -187,6 +187,29 @@ fn occurs_check_different_variables_ok() {
 }
 
 // -------------------------------------------------------------------------
+// Property: Symbol clash / arity mismatch reject unification
+// -------------------------------------------------------------------------
+#[test]
+fn unification_symbol_clash_fails() {
+    let t1 = Term::app("f", vec![Term::var("X")]);
+    let t2 = Term::app("g", vec![Term::var("X")]);
+    assert!(
+        unify(&t1, &t2).is_failure(),
+        "Different function symbols must not unify"
+    );
+}
+
+#[test]
+fn unification_arity_mismatch_fails() {
+    let t1 = Term::app("f", vec![Term::var("X")]);
+    let t2 = Term::app("f", vec![Term::var("X"), Term::var("Y")]);
+    assert!(
+        unify(&t1, &t2).is_failure(),
+        "Same symbol with different arity must not unify"
+    );
+}
+
+// -------------------------------------------------------------------------
 // Property: Unification is symmetric
 //
 // Reference:  - implicit in the algorithm
@@ -314,4 +337,14 @@ fn literal_unification_ignores_sign() {
     } else {
         panic!("Should unify atoms of complementary literals");
     }
+}
+
+#[test]
+fn literal_unification_arity_mismatch_fails() {
+    let l1 = Literal::pos("p", vec![Term::var("X")]);
+    let l2 = Literal::pos("p", vec![Term::var("X"), Term::var("Y")]);
+    assert!(
+        unify_literals(&l1, &l2).is_failure(),
+        "Same predicate with different arity must not unify"
+    );
 }

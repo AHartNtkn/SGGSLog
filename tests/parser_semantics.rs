@@ -135,3 +135,72 @@ fn test_sorted_identifiers_in_terms() {
         _ => panic!("expected function application"),
     }
 }
+
+#[test]
+fn test_multiple_exists_skolem_functions_distinct() {
+    let clause = single_clause("∀X ∃Y ∃Z (p X Y Z)");
+    assert_eq!(clause.literals.len(), 1);
+    let lit = &clause.literals[0];
+    assert_eq!(lit.atom.args.len(), 3);
+    let x = Term::var("X");
+    match (&lit.atom.args[1], &lit.atom.args[2]) {
+        (Term::App(fy, fy_args), Term::App(fz, fz_args)) => {
+            assert_eq!(fy_args.len(), 1);
+            assert_eq!(fz_args.len(), 1);
+            assert_eq!(fy_args[0], x);
+            assert_eq!(fz_args[0], x);
+            assert_ne!(fy.name, fz.name, "distinct existentials require distinct Skolem symbols");
+        }
+        _ => panic!("expected Skolem function applications for Y and Z"),
+    }
+}
+
+#[test]
+fn test_skolem_depends_on_in_scope_universals() {
+    // ∀X ∃Y ∀Z ∃W p(X,Y,Z,W) => Y = f(X), W = g(X,Z)
+    let clause = single_clause("∀X ∃Y ∀Z ∃W (p X Y Z W)");
+    assert_eq!(clause.literals.len(), 1);
+    let lit = &clause.literals[0];
+    assert_eq!(lit.atom.args.len(), 4);
+    let x = Term::var("X");
+    let z = Term::var("Z");
+    match (&lit.atom.args[1], &lit.atom.args[3]) {
+        (Term::App(fy, fy_args), Term::App(fw, fw_args)) => {
+            assert_eq!(fy_args.len(), 1);
+            assert_eq!(fy_args[0], x);
+            assert_eq!(fw_args.len(), 2);
+            assert!(fw_args.contains(&x));
+            assert!(fw_args.contains(&z));
+            assert_ne!(fy.name, fw.name);
+        }
+        _ => panic!("expected Skolem functions for Y and W"),
+    }
+}
+
+#[test]
+fn test_nested_distribution_four_clauses() {
+    // (p ∧ q) ∨ (r ∧ s) => 4 clauses: p∨r, p∨s, q∨r, q∨s
+    let stmts = parse_file("(p ∧ q) ∨ (r ∧ s)").expect("parse_file failed");
+    assert_eq!(stmts.len(), 4);
+    let mut clauses = stmts
+        .into_iter()
+        .map(|s| match s {
+            Statement::Clause(c) => c,
+            _ => panic!("expected clause"),
+        })
+        .collect::<Vec<_>>();
+    clauses.sort_by_key(|c| c.literals.len());
+
+    let expected = vec![
+        vec![Literal::pos("p", vec![]), Literal::pos("r", vec![])],
+        vec![Literal::pos("p", vec![]), Literal::pos("s", vec![])],
+        vec![Literal::pos("q", vec![]), Literal::pos("r", vec![])],
+        vec![Literal::pos("q", vec![]), Literal::pos("s", vec![])],
+    ];
+    for want in expected {
+        assert!(clauses.iter().any(|c| {
+            c.literals == want
+                || c.literals == vec![want[1].clone(), want[0].clone()]
+        }));
+    }
+}

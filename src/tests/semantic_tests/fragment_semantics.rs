@@ -49,3 +49,14 @@ fn restrained_requires_ground_preserving() {
     assert!(!clause.is_positively_ground_preserving());
     assert!(!clause.is_restrained());
 }
+
+#[test]
+fn not_ground_preserving_when_positive_introduces_new_var() {
+    // Var(C+) ⊄ Var(C-) => not positively ground-preserving
+    let clause = Clause::new(vec![
+        Literal::neg("Q", vec![Term::var("X")]),
+        Literal::pos("P", vec![Term::var("X"), Term::var("Y")]),
+    ]);
+    assert!(!clause.is_positively_ground_preserving());
+    assert!(!clause.is_ground_preserving());
+}

@@ -68,22 +68,34 @@ fn empty_is_right_identity() {
 // -------------------------------------------------------------------------
 // Property: Composition semantics
 //
-// Reference: Standard definition
-// (σ ∘ θ)(t) = σ(θ(t)) or θ(σ(t)) depending on convention
+// Reference: Substitution::compose docstring
+// (σ ∘ θ)(t) = σ(θ(t))  (apply other first, then self)
 // -------------------------------------------------------------------------
 #[test]
 fn composition_semantics() {
-    // {X -> Y} ∘ {Y -> a} should map X to a (or vice versa)
+    // {X -> Y} ∘ {Y -> a} applies other then self, so X maps to Y, Y maps to a.
     let sigma = Substitution::singleton(Var::new("X"), Term::var("Y"));
     let theta = Substitution::singleton(Var::new("Y"), Term::constant("a"));
     let composed = sigma.compose(&theta);
     let term = Term::var("X");
     let composed_result = composed.apply_to_term(&term);
-    let sigma_then_theta = theta.apply_to_term(&sigma.apply_to_term(&term));
     let theta_then_sigma = sigma.apply_to_term(&theta.apply_to_term(&term));
     assert!(
-        composed_result == sigma_then_theta || composed_result == theta_then_sigma,
-        "Composition must match some sequential application order"
+        composed_result == theta_then_sigma,
+        "Composition must apply other first, then self"
+    );
+}
+
+#[test]
+fn composition_respects_other_then_self_on_bound_variable() {
+    let sigma = Substitution::singleton(Var::new("X"), Term::var("Y"));
+    let theta = Substitution::singleton(Var::new("Y"), Term::constant("a"));
+    let composed = sigma.compose(&theta);
+    let term = Term::var("Y");
+    assert_eq!(
+        composed.apply_to_term(&term),
+        Term::constant("a"),
+        "Composition should apply other first, then self on Y"
     );
 }
 
@@ -104,4 +116,16 @@ fn renaming_inverse() {
     let once = rename.apply_to_term(&term);
     let twice = rename.apply_to_term(&once);
     assert_eq!(twice, term, "Swapping twice should return to original");
+}
+
+#[test]
+fn renaming_rejects_non_bijective_or_non_var() {
+    let mut not_bijective = Substitution::empty();
+    not_bijective.bind(Var::new("X"), Term::var("Y"));
+    not_bijective.bind(Var::new("Z"), Term::var("Y"));
+    assert!(!not_bijective.is_renaming(), "Two vars to one is not bijective");
+
+    let mut non_var = Substitution::empty();
+    non_var.bind(Var::new("X"), Term::constant("a"));
+    assert!(!non_var.is_renaming(), "Mapping to non-var is not a renaming");
 }

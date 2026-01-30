@@ -46,6 +46,31 @@ fn arb_term(depth: u32) -> impl Strategy<Value = Term> {
     }
 }
 
+fn arb_literal(depth: u32) -> impl Strategy<Value = Literal> {
+    (any::<bool>(), "[a-z]+", prop::collection::vec(arb_term(depth), 0..=3))
+        .prop_map(|(pos, pred, args)| {
+            if pos {
+                Literal::pos(pred, args)
+            } else {
+                Literal::neg(pred, args)
+            }
+        })
+}
+
+fn arb_clause(depth: u32) -> impl Strategy<Value = Clause> {
+    prop::collection::vec(arb_literal(depth), 0..=5).prop_map(Clause::new)
+}
+
+fn arb_subst_map(depth: u32) -> impl Strategy<Value = HashMap<Var, Term>> {
+    prop::collection::vec((arb_var(), arb_term(depth)), 0..=4).prop_map(|pairs| {
+        let mut map = HashMap::new();
+        for (v, t) in pairs {
+            map.insert(v, t);
+        }
+        map
+    })
+}
+
 // -------------------------------------------------------------------------
 //  Self-unification always succeeds
 // -------------------------------------------------------------------------
@@ -119,6 +144,100 @@ proptest! {
                 prop_assert_eq!(args[1].clone(), arg2.apply_subst(&subst));
             }
             _ => prop_assert!(false, "App should remain App after substitution"),
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn unification_success_makes_terms_equal(t1 in arb_term(2), t2 in arb_term(2)) {
+        let result = unify(&t1, &t2);
+        if let UnifyResult::Success(sigma) = result {
+            let u1 = sigma.apply_to_term(&t1);
+            let u2 = sigma.apply_to_term(&t2);
+            prop_assert_eq!(u1, u2, "MGU must equalize both terms");
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn unification_idempotent_on_unifier(t1 in arb_term(2), t2 in arb_term(2)) {
+        let result = unify(&t1, &t2);
+        if let UnifyResult::Success(sigma) = result {
+            let u1 = sigma.apply_to_term(&t1);
+            let u2 = sigma.apply_to_term(&t2);
+            prop_assert_eq!(sigma.apply_to_term(&u1), u1);
+            prop_assert_eq!(sigma.apply_to_term(&u2), u2);
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn unification_of_already_unified_terms_is_identity(t1 in arb_term(2), t2 in arb_term(2)) {
+        let result = unify(&t1, &t2);
+        if let UnifyResult::Success(sigma) = result {
+            let u1 = sigma.apply_to_term(&t1);
+            let u2 = sigma.apply_to_term(&t2);
+            let r2 = unify(&u1, &u2);
+            prop_assert!(r2.is_success());
+            if let UnifyResult::Success(tau) = r2 {
+                prop_assert_eq!(tau.apply_to_term(&u1), u1);
+            }
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn occurs_check_rejects_variable_in_term(
+        var_name in "[A-Z][a-z]*",
+        f in "[a-z]+",
+        g in "[a-z]+"
+    ) {
+        let v = Term::var(&var_name);
+        let term = Term::app(&f, vec![Term::app(&g, vec![Term::var(&var_name)])]);
+        let result = unify(&v, &term);
+        prop_assert!(result.is_failure(), "Occurs check must reject X = f(g(X))");
+    }
+}
+
+proptest! {
+    #[test]
+    fn ground_term_unchanged_by_substitution(
+        term in arb_ground_term(2),
+        subst in arb_subst_map(2)
+    ) {
+        let applied = term.apply_subst(&subst);
+        prop_assert_eq!(applied, term);
+    }
+}
+
+proptest! {
+    #[test]
+    fn clause_is_ground_iff_no_variables(clause in arb_clause(2)) {
+        let vars = clause.variables();
+        prop_assert_eq!(clause.is_ground(), vars.is_empty());
+    }
+}
+
+proptest! {
+    #[test]
+    fn literal_negation_involutive(lit in arb_literal(2)) {
+        let neg = lit.negated();
+        prop_assert_eq!(neg.negated(), lit);
+    }
+}
+
+proptest! {
+    #[test]
+    fn literal_unification_success_implies_atom_equality(l1 in arb_literal(2), l2 in arb_literal(2)) {
+        let result = unify_literals(&l1, &l2);
+        if let UnifyResult::Success(sigma) = result {
+            let a1 = sigma.apply_to_term(&Term::app(&l1.atom.predicate, l1.atom.args.clone()));
+            let a2 = sigma.apply_to_term(&Term::app(&l2.atom.predicate, l2.atom.args.clone()));
+            prop_assert_eq!(a1, a2);
         }
     }
 }

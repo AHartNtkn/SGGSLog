@@ -6,6 +6,7 @@ use super::*;
 //
 // Reference: [BP17] Definition 1 (Constraint, standard form)
 use crate::constraint::{AtomicConstraint, Constraint};
+use crate::unify::Substitution;
 
 #[test]
 fn standardize_eliminates_identical_and_root_equals() {
@@ -81,4 +82,27 @@ fn constraint_intersects_false_when_unsat() {
         Term::var("x"),
     ));
     assert!(!c1.intersects(&Constraint::True));
+}
+
+#[test]
+fn atomic_constraint_evaluate_with_substitution() {
+    let c = AtomicConstraint::Identical(Term::var("X"), Term::constant("a"));
+    let mut subst = Substitution::empty();
+    subst.bind(Var::new("X"), Term::constant("a"));
+    assert_eq!(c.evaluate(&subst), Some(true));
+
+    let c = AtomicConstraint::RootNotEquals(Term::var("X"), "f".to_string());
+    let mut subst = Substitution::empty();
+    subst.bind(Var::new("X"), Term::app("f", vec![Term::constant("a")]));
+    assert_eq!(c.evaluate(&subst), Some(false));
+}
+
+#[test]
+fn constraint_simplify_double_negation() {
+    let c = Constraint::Atomic(AtomicConstraint::NotIdentical(
+        Term::var("x"),
+        Term::var("y"),
+    ));
+    let nn = Constraint::Not(Box::new(Constraint::Not(Box::new(c.clone()))));
+    assert_eq!(nn.simplify(), c);
 }

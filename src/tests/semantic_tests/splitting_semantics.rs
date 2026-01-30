@@ -128,3 +128,36 @@ fn splitting_returns_none_for_disjoint_literals() {
 
     assert!(crate::sggs::sggs_splitting(&clause, &other).is_none());
 }
+
+#[test]
+fn splitting_representative_matches_intersection() {
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x"), Term::var("y")])]),
+        Constraint::True,
+        0,
+    );
+    let other = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a"), Term::var("y")])]),
+        Constraint::True,
+        0,
+    );
+
+    let result = crate::sggs::sggs_splitting(&clause, &other).expect("expected split result");
+    let consts = vec![Term::constant("a"), Term::constant("b")];
+    let original = ground_atoms_for_clause(&clause, &consts);
+    let other_atoms = ground_atoms_for_clause(&other, &consts);
+    let expected_intersection: HashSet<_> = original
+        .intersection(&other_atoms)
+        .cloned()
+        .collect();
+
+    let mut found = false;
+    for part in &result.parts {
+        let atoms = ground_atoms_for_clause(part, &consts);
+        if atoms == expected_intersection {
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "split should include representative of the intersection");
+}
