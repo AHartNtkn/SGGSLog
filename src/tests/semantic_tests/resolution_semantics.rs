@@ -172,6 +172,34 @@ fn resolution_inapplicable_when_clause_is_not_conflict() {
 }
 
 #[test]
+fn resolution_inapplicable_when_clause_not_conflict_under_i_positive() {
+    // Conflict clause definition: "all its literals are uniformly false in I[Γ]".
+    // Under I⁺, positive literals are uniformly true unless forced false by I^p(Γ),
+    // so a clause with any positive literal is not a conflict in the empty-trail case.
+    // Source: "On SGGS and Horn Clauses" (paper6), definition of conflict clause.
+    let mut trail = Trail::new(InitialInterpretation::AllPositive);
+    // I-all-true justification in dp(Γ).
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    let not_conflict = ConstrainedClause::new(
+        Clause::new(vec![
+            Literal::neg("P", vec![Term::constant("a")]),
+            Literal::pos("Q", vec![Term::constant("a")]),
+        ]),
+        0,
+    );
+    trail.push(not_conflict.clone());
+
+    match sggs_resolution(&not_conflict, &trail) {
+        ResolutionResult::Inapplicable => {}
+        other => panic!("Expected inapplicable resolution, got {:?}", other),
+    }
+}
+
+#[test]
 fn resolution_inapplicable_when_justification_outside_dp() {
     // Resolution requires the justification to be in dp(Γ).
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
