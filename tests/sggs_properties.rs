@@ -1,5 +1,5 @@
 use proptest::prelude::*;
-use sggslog::syntax::{Atom, Clause, Constant, FnSym, Literal, Term, Var};
+use sggslog::syntax::{Atom, Clause, Literal, Term, Var};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -12,16 +12,10 @@ prop_compose! {
     }
 }
 
-prop_compose! {
-    fn any_constant()(name in "[a-z][a-z0-9_]*") -> Constant {
-        Constant::new(name)
-    }
-}
-
 fn any_term() -> impl Strategy<Value = Term> {
     let leaf = prop_oneof![
         any_var().prop_map(Term::Var),
-        any_constant().prop_map(Term::Const),
+        "[a-z][a-z0-9_]*".prop_map(|name| Term::app(name, vec![])),
     ];
 
     leaf.prop_recursive(
@@ -157,7 +151,6 @@ fn collect_vars_term(term: &Term, acc: &mut HashSet<Var>) {
         Term::Var(v) => {
             acc.insert(v.clone());
         }
-        Term::Const(_) => {}
         Term::App(_, args) => {
             for arg in args {
                 collect_vars_term(arg, acc);

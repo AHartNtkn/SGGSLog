@@ -118,6 +118,25 @@ fn trail_rejects_i_true_selection_when_i_false_available() {
     );
 }
 
+#[test]
+fn trail_rejects_i_true_selection_when_i_false_available_under_i_positive() {
+    // Under I⁺, negative literals are I-false; selecting a positive literal is invalid
+    // when an I-false literal exists.
+    let mut trail = Trail::new(InitialInterpretation::AllPositive);
+    let clause = Clause::new(vec![
+        Literal::pos("p", vec![Term::constant("a")]), // I-true under I⁺
+        Literal::neg("q", vec![Term::constant("b")]), // I-false under I⁺
+    ]);
+    let constrained = ConstrainedClause::new(clause, 0); // select I-true literal
+    let err = trail
+        .push_checked(constrained)
+        .expect_err("expected invalid selection to be rejected");
+    assert!(
+        err.message.to_lowercase().contains("i-false"),
+        "error should mention I-false selection requirement"
+    );
+}
+
 // -------------------------------------------------------------------------
 // Property: Disjoint prefix
 //

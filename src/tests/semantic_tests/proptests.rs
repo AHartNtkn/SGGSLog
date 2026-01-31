@@ -253,7 +253,6 @@ proptest! {
         fn check_var_in_set(t: &Term, vars: &std::collections::HashSet<Var>) -> bool {
             match t {
                 Term::Var(v) => vars.contains(v),
-                Term::Const(_) => true,
                 Term::App(_, args) => args.iter().all(|a| check_var_in_set(a, vars)),
             }
         }

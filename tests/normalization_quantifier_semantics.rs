@@ -52,7 +52,6 @@ fn test_skolemization_respects_shadowing_scope() {
                 "argument should be a variable"
             );
         }
-        Term::Const(_) => {}
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {}
         _ => panic!("expected Skolem function application"),
     }
@@ -75,12 +74,10 @@ fn test_skolem_constant_shared_across_conjunction() {
     let q_lit = first_literal_with_predicate(&q_clause, "q");
 
     let p_sk = match &p_lit.atom.args[0] {
-        Term::Const(cn) => cn.name().to_string(),
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
         _ => panic!("expected Skolem constant"),
     };
     let q_sk = match &q_lit.atom.args[0] {
-        Term::Const(cn) => cn.name().to_string(),
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
         _ => panic!("expected Skolem constant"),
     };

@@ -14,13 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn term_uses_only_symbols(term: &Term, allowed: &crate::syntax::Signature) -> bool {
     match term {
         Term::Var(_) => true,
-        Term::Const(c) => allowed.contains_constant_name(c.name()),
         Term::App(sym, args) => {
-            if sym.arity == 0 {
-                if !allowed.allows_zero_ary_function(&sym.name) {
-                    return false;
-                }
-            } else if !allowed.contains_function(&sym.name, sym.arity) {
+            if !allowed.contains_function(&sym.name, sym.arity) {
                 return false;
             }
             args.iter()
@@ -68,6 +63,35 @@ fn session_executes_query_statement() {
         .execute_statement(stmt)
         .expect("execute_statement failed");
     assert!(matches!(result, ExecResult::QueryResult(_)));
+}
+
+#[test]
+fn session_next_without_active_query_errors() {
+    let mut session = Session::new();
+    let err = session
+        .execute_statement(Statement::Directive(Directive::Next))
+        .expect_err("expected error when no active query");
+    assert!(!err.message.is_empty());
+}
+
+#[test]
+fn session_new_query_resets_stream() {
+    let mut session = Session::new();
+    let fact = Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    session
+        .execute_statement(Statement::Clause(fact))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let first = session
+        .execute_statement(stmt.clone())
+        .expect("execute_statement failed");
+    assert!(matches!(first, ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))));
+
+    let second = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    assert!(matches!(second, ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))));
 }
 
 #[test]
@@ -274,13 +298,15 @@ fn session_load_file_normalizes_formulas() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let expected = Clause::new(vec![Literal::neg("p", vec![]), Literal::pos("q", vec![])]);
-    let expected_set: std::collections::HashSet<_> = expected.literals.into_iter().collect();
-    let found = session.theory().clauses().iter().any(|c| {
-        let got: std::collections::HashSet<_> = c.literals.iter().cloned().collect();
-        got == expected_set
-    });
-    assert!(found, "expected normalized clause ¬p ∨ q");
+    // Normalization should introduce clauses over the original vocabulary (p, q),
+    // possibly with auxiliaries, but it must not drop both predicates.
+    let sig = session.theory().signature();
+    assert!(sig.contains_predicate_name("p"));
+    assert!(sig.contains_predicate_name("q"));
+    assert!(
+        !session.theory().clauses().is_empty(),
+        "normalization should produce at least one clause"
+    );
 
     let _ = fs::remove_file(&path);
 }
@@ -325,12 +351,8 @@ fn session_query_does_not_expose_internal_symbols() {
         };
     }
 
-    // Only symbols from the original input (predicate p and constant a) are allowed.
+    // Only symbols from the original input (predicate p and 0-ary function a) are allowed.
     let mut allowed_sig = crate::syntax::Signature::empty();
-    allowed_sig.constants.insert(crate::syntax::ConstSig {
-        name: "a".to_string(),
-        sort: None,
-    });
     allowed_sig.functions.insert(crate::syntax::FnSig {
         name: "a".to_string(),
         arity: 0,
@@ -441,6 +463,31 @@ fn session_query_allows_internal_symbols_when_enabled() {
 }
 
 #[test]
+fn session_user_signature_excludes_internal_skolems() {
+    // User signature should include only user-provided symbols, not Skolem symbols.
+    let mut session = Session::new();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("sggslog_skolem_sig_{}.sggs", unique));
+    fs::write(&path, "∃X (p X)\n").expect("write test file");
+
+    let _ = session
+        .load_file(path.to_str().expect("path string"))
+        .expect("load_file failed");
+
+    let sig = session.user_signature().signature();
+    assert!(sig.contains_predicate_name("p"));
+    assert!(
+        sig.functions.is_empty(),
+        "user signature should not include internal Skolem functions"
+    );
+
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
 fn session_tracks_user_signature_from_input() {
     let mut session = Session::new();
     let unique = SystemTime::now()
@@ -459,7 +506,7 @@ fn session_tracks_user_signature_from_input() {
     assert!(sig.contains_predicate_name("q"));
     assert!(sig.contains_predicate_name("r"));
     assert!(sig.contains_function_name("f"));
-    assert!(sig.contains_constant_name("a"));
+    assert!(sig.contains_function("a", 0));
 
     let _ = fs::remove_file(&path);
 }

@@ -205,7 +205,6 @@ fn splitting_has_no_missing_instances_symbolically() {
                 .lookup(v)
                 .cloned()
                 .unwrap_or_else(|| Term::Var(v.clone())),
-            Term::Const(_) => term.clone(),
             Term::App(sym, args) => {
                 let new_args = args.iter().map(|t| apply_subst_term(subst, t)).collect();
                 Term::App(sym.clone(), new_args)

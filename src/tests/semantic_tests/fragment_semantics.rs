@@ -3,7 +3,7 @@ use crate::syntax::{Atom, AtomCmp, AtomOrder};
 
 fn term_size(t: &Term) -> usize {
     match t {
-        Term::Var(_) | Term::Const(_) => 1,
+        Term::Var(_) => 1,
         Term::App(_, args) => 1 + args.iter().map(term_size).sum::<usize>(),
     }
 }

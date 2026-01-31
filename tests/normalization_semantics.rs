@@ -290,9 +290,6 @@ fn test_exists_skolemizes_to_constant() {
     let clause = find_clause_with_predicates(&clauses, &["p"]);
     let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
-        Term::Const(_) => {
-            assert!(lit.is_ground());
-        }
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {
             assert!(lit.is_ground());
         }
@@ -306,9 +303,6 @@ fn test_exists_skolem_constant_preserves_sort() {
     let clause = find_clause_with_predicates(&clauses, &["p"]);
     let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
-        Term::Const(c) => {
-            assert_eq!(c.sort(), Some("s1"));
-        }
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {
             assert_eq!(sym.result_sort.as_deref(), Some("s1"));
         }
@@ -401,7 +395,6 @@ fn test_exists_before_forall_skolem_constant() {
     let clause = find_clause_with_predicates(&clauses, &["p"]);
     let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
-        Term::Const(_) => {}
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {}
         _ => panic!("expected Skolem constant for X"),
     }
@@ -417,12 +410,10 @@ fn test_skolem_symbols_fresh_across_clauses() {
     let clauses = clausify_src("∃X (p X)\n∃Y (q Y)");
     assert_eq!(clauses.len(), 2);
     let sk1 = match &clauses[0].literals[0].atom.args[0] {
-        Term::Const(c) => c.name().to_string(),
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
         _ => panic!("expected Skolem constant in first clause"),
     };
     let sk2 = match &clauses[1].literals[0].atom.args[0] {
-        Term::Const(c) => c.name().to_string(),
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => sym.name.clone(),
         _ => panic!("expected Skolem constant in second clause"),
     };
@@ -473,7 +464,6 @@ fn test_skolemization_does_not_capture_universals_from_other_statements() {
     // The existential in the second statement should introduce a Skolem constant,
     // not a function of the unrelated universal from the first statement.
     let sk = match &clauses[1].literals[0].atom.args[0] {
-        Term::Const(c) => (c.name().to_string(), 0usize),
         Term::App(sym, args) => (sym.name.clone(), args.len()),
         _ => panic!("expected Skolem symbol in second clause"),
     };

@@ -46,6 +46,54 @@ fn standardize_eliminates_identical_and_root_equals() {
 }
 
 #[test]
+fn standardize_is_idempotent() {
+    let c = Constraint::Or(
+        Box::new(Constraint::Atomic(AtomicConstraint::RootEquals(
+            Term::var("x"),
+            "f".to_string(),
+        ))),
+        Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+            Term::var("x"),
+            Term::var("y"),
+        ))),
+    );
+    let std1 = c.standardize();
+    let std2 = std1.standardize();
+    assert_eq!(std1, std2);
+}
+
+#[test]
+fn standardize_produces_conjunction_of_atomic_constraints() {
+    // Standard form: true/false or conjunctions of x ≠ y and top(x) ≠ f atoms.
+    let c = Constraint::Not(Box::new(Constraint::Or(
+        Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+            Term::var("x"),
+            Term::var("y"),
+        ))),
+        Box::new(Constraint::Atomic(AtomicConstraint::RootEquals(
+            Term::var("x"),
+            "f".to_string(),
+        ))),
+    )));
+    let std = c.standardize();
+
+    fn ok(c: &Constraint) -> bool {
+        match c {
+            Constraint::True | Constraint::False => true,
+            Constraint::Atomic(AtomicConstraint::NotIdentical(_, _)) => true,
+            Constraint::Atomic(AtomicConstraint::RootNotEquals(_, _)) => true,
+            Constraint::And(a, b) => ok(a) && ok(b),
+            _ => false,
+        }
+    }
+
+    assert!(
+        ok(&std),
+        "standard form should be conjunctions of NotIdentical / RootNotEquals"
+    );
+}
+
+#[test]
 fn constraint_satisfiable_examples() {
     // x ≠ x is unsatisfiable.
     let c1 = Constraint::Atomic(AtomicConstraint::NotIdentical(

@@ -203,6 +203,30 @@ fn extension_n0_uses_most_general_falsifier() {
 }
 
 #[test]
+fn extension_n0_uses_most_general_falsifier_i_positive() {
+    // Dual of n=0 case under I⁺: selected literal should be I-false (negative).
+    let trail = Trail::new(InitialInterpretation::AllPositive);
+    let clause = Clause::new(vec![Literal::neg("P", vec![Term::var("X")])]);
+    let theory = theory_from_clauses(vec![clause.clone()]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => {
+            let lit = cc.selected_literal();
+            let original = &clause.literals[0];
+            match unify_literals(lit, original) {
+                UnifyResult::Success(_) => {}
+                _ => panic!("extended literal must be an instance of the premise"),
+            }
+            assert!(
+                !lit.positive,
+                "selected literal must be I-false under I⁺"
+            );
+        }
+        other => panic!("Expected extension with n=0 under I⁺, got {:?}", other),
+    }
+}
+
+#[test]
 fn extension_conflict_via_extension_substitution() {
     // When every I-false literal intersects an I-true selected literal in dp(Γ),
     // SGGS-extension applies the extension substitution to make the clause uniformly false,
@@ -242,6 +266,47 @@ fn extension_conflict_via_extension_substitution() {
         }
         other => panic!(
             "Expected conflict via extension substitution, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_conflict_via_extension_substitution_i_positive() {
+    // Dual of extension_conflict_via_extension_substitution under I⁺.
+    let mut trail = Trail::new(InitialInterpretation::AllPositive);
+    // I-false selected literal: ¬P(a)
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    // I-true selected literal: P(f(a))
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::constant("a")])],
+        )]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::pos("P", vec![Term::var("X")]),
+        Literal::neg("P", vec![Term::app("f", vec![Term::var("X")])]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Conflict(cc) => {
+            let lits: std::collections::HashSet<_> = cc.clause.literals.iter().cloned().collect();
+            let expected: std::collections::HashSet<_> = vec![
+                Literal::pos("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::app("f", vec![Term::constant("a")])]),
+            ]
+            .into_iter()
+            .collect();
+            assert_eq!(lits, expected);
+        }
+        other => panic!(
+            "Expected conflict via extension substitution under I⁺, got {:?}",
             other
         ),
     }

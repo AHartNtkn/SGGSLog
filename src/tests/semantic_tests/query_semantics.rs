@@ -94,6 +94,40 @@ fn ground_query_not_entailed_has_no_answers() {
 }
 
 #[test]
+fn unsatisfiable_theory_query_exhausted() {
+    // Source: spec.md (unsatisfiable theory yields no model for query answering).
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::neg(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+    match stream.next() {
+        QueryResult::Exhausted => {}
+        other => panic!("Expected exhausted on unsatisfiable theory, got {:?}", other),
+    }
+}
+
+#[test]
+fn unsatisfiable_query_exhausted() {
+    let theory = crate::theory::Theory::new();
+    let query = Query::new(vec![
+        Literal::pos("p", vec![Term::constant("a")]),
+        Literal::neg("p", vec![Term::constant("a")]),
+    ]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+    match stream.next() {
+        QueryResult::Exhausted => {}
+        other => panic!("Expected no answers, got {:?}", other),
+    }
+}
+
+#[test]
 fn non_ground_query_returns_instance_answer() {
     // Theory: p(a). Query: p(X). Expect answer X=a in the constructed model.
     let mut theory = crate::theory::Theory::new();
@@ -110,6 +144,34 @@ fn non_ground_query_returns_instance_answer() {
             assert_no_spurious_bindings(&[ans], &query.variables());
         }
         other => panic!("Expected answers, got {:?}", other),
+    }
+    match stream.next() {
+        QueryResult::Exhausted => {}
+        other => panic!("Expected exhausted stream, got {:?}", other),
+    }
+}
+
+#[test]
+fn non_ground_query_derived_answer() {
+    // Theory: p(a), ¬p(X) ∨ q(X). Query: q(X) should yield X=a.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("p", vec![Term::var("X")]),
+        Literal::pos("q", vec![Term::var("X")]),
+    ]));
+    let query = Query::new(vec![Literal::pos("q", vec![Term::var("X")])]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+    match stream.next() {
+        QueryResult::Answer(ans) => {
+            let x = Var::new("X");
+            assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
+            assert_no_spurious_bindings(&[ans], &query.variables());
+        }
+        other => panic!("Expected derived answer, got {:?}", other),
     }
     match stream.next() {
         QueryResult::Exhausted => {}
@@ -297,7 +359,7 @@ fn negative_only_query_streams_over_user_signature() {
 
     let query = Query::new(vec![Literal::neg("p", vec![Term::var("X")])]);
     let mut user_sig = crate::syntax::UserSignature::empty();
-    user_sig.insert_constant("a", None);
+    user_sig.insert_function("a", 0, None);
 
     let mut stream = answer_query_projected(
         &theory,
@@ -331,6 +393,37 @@ fn query_respects_resource_limit() {
 }
 
 #[test]
+fn projected_query_allows_user_functions() {
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::app("f", vec![Term::constant("a")])],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let mut user_sig = crate::syntax::UserSignature::empty();
+    user_sig.insert_function("a", 0, None);
+    user_sig.insert_function("f", 1, None);
+
+    let mut stream = answer_query_projected(
+        &theory,
+        &query,
+        crate::sggs::DerivationConfig::default(),
+        &user_sig,
+        ProjectionPolicy::OnlyUserSymbols,
+    );
+    let ans = match stream.next() {
+        QueryResult::Answer(ans) => ans,
+        other => panic!("Expected answers, got {:?}", other),
+    };
+    let x = Var::new("X");
+    assert_eq!(
+        ans.lookup(&x),
+        Some(&Term::app("f", vec![Term::constant("a")]))
+    );
+}
+
+#[test]
 fn projected_query_filters_internal_symbols() {
     // Source: spec.md (ProjectionPolicy: OnlyUserSymbols).
     let mut theory = crate::theory::Theory::new();
@@ -342,6 +435,29 @@ fn projected_query_filters_internal_symbols() {
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
     let user_sig = crate::syntax::UserSignature::empty();
+
+    let mut stream = answer_query_projected(
+        &theory,
+        &query,
+        crate::sggs::DerivationConfig::default(),
+        &user_sig,
+        ProjectionPolicy::OnlyUserSymbols,
+    );
+    assert!(matches!(stream.next(), QueryResult::Exhausted));
+}
+
+#[test]
+fn projected_query_filters_internal_functions() {
+    // Internal function symbols should be filtered under OnlyUserSymbols.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::app("f", vec![Term::constant("a")])],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let mut user_sig = crate::syntax::UserSignature::empty();
+    user_sig.insert_function("a", 0, None);
 
     let mut stream = answer_query_projected(
         &theory,
@@ -368,7 +484,7 @@ fn projected_query_keeps_user_witnesses_and_drops_internal() {
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
     let mut user_sig = crate::syntax::UserSignature::empty();
-    user_sig.insert_constant("a", None);
+    user_sig.insert_function("a", 0, None);
 
     let mut stream = answer_query_projected(
         &theory,
@@ -388,7 +504,6 @@ fn projected_query_keeps_user_witnesses_and_drops_internal() {
         let t = ans.lookup(v).expect("bound var");
         match t {
             Term::Var(_) => true,
-            Term::Const(c) => user_sig.contains_constant_name(c.name()),
             Term::App(sym, _) => user_sig.contains_function(&sym.name, sym.arity),
         }
     }));
@@ -425,10 +540,43 @@ fn projected_query_allows_internal_symbols_when_enabled() {
         let t = ans.lookup(v).expect("bound var");
         match t {
             Term::Var(_) => false,
-            Term::Const(c) => !user_sig.contains_constant_name(c.name()),
             Term::App(sym, _) => !user_sig.contains_function(&sym.name, sym.arity),
         }
     }));
+    match stream.next() {
+        QueryResult::Exhausted => {}
+        other => panic!("Expected exhausted stream, got {:?}", other),
+    }
+}
+
+#[test]
+fn projected_query_allows_internal_functions_when_enabled() {
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::app("$skf", vec![Term::constant("a")])],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let mut user_sig = crate::syntax::UserSignature::empty();
+    user_sig.insert_function("a", 0, None);
+
+    let mut stream = answer_query_projected(
+        &theory,
+        &query,
+        crate::sggs::DerivationConfig::default(),
+        &user_sig,
+        ProjectionPolicy::AllowInternal,
+    );
+    let ans = match stream.next() {
+        QueryResult::Answer(ans) => ans,
+        other => panic!("Expected answer, got {:?}", other),
+    };
+    let x = Var::new("Y");
+    assert_eq!(
+        ans.lookup(&x),
+        Some(&Term::app("$skf", vec![Term::constant("a")]))
+    );
     match stream.next() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),

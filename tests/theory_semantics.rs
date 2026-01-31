@@ -22,31 +22,33 @@ fn canonical_term(
                 entry.clone()
             }
         }
-        Term::Const(c) => {
-            if let Some(sort) = c.sort() {
-                format!("c:{}:{}", c.name(), sort)
-            } else {
-                format!("c:{}", c.name())
-            }
-        }
         Term::App(sym, args) => {
             let mut rendered = String::new();
-            rendered.push_str("f:");
-            rendered.push_str(sym.name.as_str());
-            if let Some(sort) = sym.result_sort.as_deref() {
-                rendered.push(':');
-                rendered.push_str(sort);
-            }
-            rendered.push('(');
-            let mut first = true;
-            for a in args {
-                if !first {
-                    rendered.push(',');
+            if sym.arity == 0 && args.is_empty() {
+                rendered.push_str("c:");
+                rendered.push_str(sym.name.as_str());
+                if let Some(sort) = sym.result_sort.as_deref() {
+                    rendered.push(':');
+                    rendered.push_str(sort);
                 }
-                first = false;
-                rendered.push_str(&canonical_term(a, renaming, next_id));
+            } else {
+                rendered.push_str("f:");
+                rendered.push_str(sym.name.as_str());
+                if let Some(sort) = sym.result_sort.as_deref() {
+                    rendered.push(':');
+                    rendered.push_str(sort);
+                }
+                rendered.push('(');
+                let mut first = true;
+                for a in args {
+                    if !first {
+                        rendered.push(',');
+                    }
+                    first = false;
+                    rendered.push_str(&canonical_term(a, renaming, next_id));
+                }
+                rendered.push(')');
             }
-            rendered.push(')');
             rendered
         }
     }

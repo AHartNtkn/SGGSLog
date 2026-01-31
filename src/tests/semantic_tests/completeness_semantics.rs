@@ -18,6 +18,18 @@ use super::*;
 // [BW20] Theorems 1-5 extend these results to decidable fragments.
 use crate::sggs::{derive, DerivationConfig, DerivationResult, InitialInterpretation};
 
+fn model_satisfies_ground_clause(model: &crate::sggs::Model, clause: &Clause) -> bool {
+    clause.literals.iter().any(|lit| {
+        let atom = lit.atom.clone();
+        let holds = model.true_atoms.contains(&atom);
+        if lit.positive {
+            holds
+        } else {
+            !holds
+        }
+    })
+}
+
 // -------------------------------------------------------------------------
 // Property: Unsatisfiable theories derive empty clause
 //
@@ -74,6 +86,31 @@ fn satisfiable_produces_model() {
             );
         }
         _ => panic!("[BP17] Theorem 2: Single fact p should be satisfiable"),
+    }
+}
+
+#[test]
+fn model_satisfies_all_ground_clauses() {
+    let theory = theory_from_clauses(vec![
+        Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]),
+        Clause::new(vec![
+            Literal::neg("p", vec![Term::constant("a")]),
+            Literal::pos("q", vec![Term::constant("b")]),
+        ]),
+    ]);
+    let config = DerivationConfig::default();
+    let result = derive(&theory, config);
+    match result {
+        DerivationResult::Satisfiable(model) => {
+            for clause in theory.clauses() {
+                assert!(
+                    model_satisfies_ground_clause(&model, clause),
+                    "model should satisfy ground clause {:?}",
+                    clause
+                );
+            }
+        }
+        _ => panic!("expected satisfiable model for ground theory"),
     }
 }
 

@@ -1,4 +1,4 @@
-//! First-order terms: variables, constants, and function applications.
+//! First-order terms: variables and function applications (including 0-ary constants).
 
 use std::collections::HashSet;
 
@@ -21,38 +21,6 @@ impl Var {
 
     pub fn new_with_sort(name: impl Into<String>, sort: impl Into<String>) -> Self {
         Var {
-            name: name.into(),
-            sort: Some(sort.into()),
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn sort(&self) -> Option<&str> {
-        self.sort.as_deref()
-    }
-}
-
-/// A constant symbol (0-ary function).
-/// Constants are represented by lowercase names and may carry an optional sort.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Constant {
-    name: String,
-    sort: Option<String>,
-}
-
-impl Constant {
-    pub fn new(name: impl Into<String>) -> Self {
-        Constant {
-            name: name.into(),
-            sort: None,
-        }
-    }
-
-    pub fn new_with_sort(name: impl Into<String>, sort: impl Into<String>) -> Self {
-        Constant {
             name: name.into(),
             sort: Some(sort.into()),
         }
@@ -99,17 +67,15 @@ impl FnSym {
 
 /// A first-order term.
 ///
-/// Terms are built from variables, constants, and function applications.
+/// Terms are built from variables and function applications (constants are 0-ary applications).
 /// In S-expression syntax:
 /// - Variables: `X`, `Y`, `Person` (capitalized)
-/// - Constants: `socrates`, `nil` (lowercase)
+/// - Constants (0-ary functions): `socrates`, `nil` (lowercase)
 /// - Applications: `(f x y)`, `(cons a b)`
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Term {
     /// A variable
     Var(Var),
-    /// A constant (0-ary function symbol)
-    Const(Constant),
     /// Function application: f(t1, ..., tn)
     App(FnSym, Vec<Term>),
 }
@@ -122,7 +88,12 @@ impl Term {
 
     /// Create a constant term.
     pub fn constant(name: impl Into<String>) -> Self {
-        Term::Const(Constant::new(name))
+        Term::App(FnSym::new(name, 0), Vec::new())
+    }
+
+    /// Create a sorted constant term (0-ary function).
+    pub fn constant_with_sort(name: impl Into<String>, sort: impl Into<String>) -> Self {
+        Term::App(FnSym::new_with_sort(name, 0, sort), Vec::new())
     }
 
     /// Create a function application term.
@@ -184,24 +155,10 @@ mod tests {
     }
 
     #[test]
-    fn test_const_construction() {
-        let c = Constant::new("socrates");
-        assert_eq!(c.name(), "socrates");
-        assert_eq!(c.sort(), None);
-    }
-
-    #[test]
     fn test_sorted_var_construction() {
         let v = Var::new_with_sort("X", "s1");
         assert_eq!(v.name(), "X");
         assert_eq!(v.sort(), Some("s1"));
-    }
-
-    #[test]
-    fn test_sorted_const_construction() {
-        let c = Constant::new_with_sort("a", "s1");
-        assert_eq!(c.name(), "a");
-        assert_eq!(c.sort(), Some("s1"));
     }
 
     #[test]
@@ -215,6 +172,33 @@ mod tests {
                 assert_eq!(args.len(), 2);
             }
             _ => panic!("Expected App term"),
+        }
+    }
+
+    #[test]
+    fn test_const_construction_as_zero_ary_app() {
+        let c = Term::constant("socrates");
+        match c {
+            Term::App(sym, args) => {
+                assert_eq!(sym.name, "socrates");
+                assert_eq!(sym.arity, 0);
+                assert!(args.is_empty());
+            }
+            _ => panic!("Expected 0-ary App term"),
+        }
+    }
+
+    #[test]
+    fn test_sorted_const_construction_as_zero_ary_app() {
+        let c = Term::constant_with_sort("a", "s1");
+        match c {
+            Term::App(sym, args) => {
+                assert_eq!(sym.name, "a");
+                assert_eq!(sym.arity, 0);
+                assert_eq!(sym.result_sort.as_deref(), Some("s1"));
+                assert!(args.is_empty());
+            }
+            _ => panic!("Expected 0-ary App term"),
         }
     }
 

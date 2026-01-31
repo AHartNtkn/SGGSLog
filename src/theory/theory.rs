@@ -147,7 +147,6 @@ impl Theory {
         fn term_sort(term: &Term) -> Option<&str> {
             match term {
                 Term::Var(v) => v.sort(),
-                Term::Const(c) => c.sort(),
                 Term::App(f, _) => f.result_sort.as_deref(),
             }
         }
@@ -160,14 +159,6 @@ impl Theory {
             match term {
                 Term::Var(v) => {
                     if let Some(s) = v.sort() {
-                        nodes.insert(s.to_string());
-                        Ok(())
-                    } else {
-                        Err(())
-                    }
-                }
-                Term::Const(c) => {
-                    if let Some(s) = c.sort() {
                         nodes.insert(s.to_string());
                         Ok(())
                     } else {
@@ -202,7 +193,7 @@ impl Theory {
         for clause in &self.clauses {
             for lit in &clause.literals {
                 for term in &lit.atom.args {
-                    if matches!(term, Term::App(_, _)) {
+                    if matches!(term, Term::App(sym, _) if sym.arity > 0) {
                         saw_function = true;
                     }
                     if collect_edges(term, &mut edges, &mut nodes).is_err() {

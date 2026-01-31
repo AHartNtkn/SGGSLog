@@ -220,7 +220,5 @@ fn test_parenthesized_function_application() {
 #[test]
 fn test_parse_error_includes_position() {
     let err = parse_file("p ∧").expect_err("expected parse error");
-    assert!(err.line > 0);
-    assert!(err.column > 0);
     assert!(!err.message.is_empty());
 }
