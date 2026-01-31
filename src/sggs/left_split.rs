@@ -4,7 +4,9 @@ use super::{ConstrainedClause, SplitResult};
 
 /// SGGS left-splitting: split a clause using a conflicting clause to isolate intersections.
 ///
-/// Returns a partition of the split clause if left-splitting applies.
+/// Assumes left-split applicability preconditions (I-all-true clause assigned to a dp(Γ)
+/// clause, strict subset condition, and no (†) factoring condition) are checked by the caller.
+/// Returns a partition of the split clause if a non-trivial intersection is present.
 pub fn sggs_left_split(
     _clause: &ConstrainedClause,
     _other: &ConstrainedClause,
@@ -21,6 +23,7 @@ mod tests {
     #[test]
     fn test_left_split_intersection() {
         // Source: SGGSdpFOL, rule l-split (Fig. 2).
+        // Use an I-all-true (negative) clause as the conflict side premise.
         let clause = ConstrainedClause::with_constraint(
             Clause::new(vec![Literal::pos(
                 "P",
@@ -30,7 +33,7 @@ mod tests {
             0,
         );
         let other = ConstrainedClause::with_constraint(
-            Clause::new(vec![Literal::pos(
+            Clause::new(vec![Literal::neg(
                 "P",
                 vec![
                     Term::app("f", vec![Term::var("w")]),
@@ -56,7 +59,7 @@ mod tests {
             0,
         );
         let other = ConstrainedClause::with_constraint(
-            Clause::new(vec![Literal::pos("Q", vec![Term::var("y")])]),
+            Clause::new(vec![Literal::neg("Q", vec![Term::var("y")])]),
             Constraint::True,
             0,
         );
@@ -67,7 +70,7 @@ mod tests {
     #[test]
     fn test_left_split_defers_when_factoring_applicable() {
         // Source: SGGSdpFOL, Fig. 2 (l-split applies only if condition (†) does not hold).
-        // If the other clause has a same-sign literal unifying with its selected literal,
+        // If the conflict clause has another same-sign literal unifying with its selected literal,
         // factoring should be preferred, so left-split should not apply.
         let clause = ConstrainedClause::with_constraint(
             Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
@@ -76,8 +79,8 @@ mod tests {
         );
         let other = ConstrainedClause::with_constraint(
             Clause::new(vec![
-                Literal::pos("P", vec![Term::var("y")]), // selected
-                Literal::pos("P", vec![Term::constant("a")]),
+                Literal::neg("P", vec![Term::var("y")]), // selected (I-all-true)
+                Literal::neg("P", vec![Term::constant("a")]),
             ]),
             Constraint::True,
             0,
@@ -94,7 +97,7 @@ mod tests {
             0,
         );
         let other = ConstrainedClause::with_constraint(
-            Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+            Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
             Constraint::True,
             0,
         );

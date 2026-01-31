@@ -208,6 +208,39 @@ fn test_directive_parsing_next() {
 }
 
 #[test]
+fn test_directive_parsing_quit() {
+    let stmts = parse_file(":quit").expect("parse_file failed");
+    assert_eq!(stmts.len(), 1);
+    assert_eq!(
+        stmts[0],
+        Statement::Directive(sggslog::parser::Directive::Quit)
+    );
+}
+
+#[test]
+fn test_directive_parsing_set_projection() {
+    let stmts = parse_file(":set projection only_user_symbols\n:set projection allow_internal")
+        .expect("parse_file failed");
+    assert_eq!(stmts.len(), 2);
+    assert_eq!(
+        stmts[0],
+        Statement::Directive(sggslog::parser::Directive::Set(
+            sggslog::parser::Setting::Projection(
+                sggslog::parser::ProjectionSetting::OnlyUserSymbols
+            )
+        ))
+    );
+    assert_eq!(
+        stmts[1],
+        Statement::Directive(sggslog::parser::Directive::Set(
+            sggslog::parser::Setting::Projection(
+                sggslog::parser::ProjectionSetting::AllowInternal
+            )
+        ))
+    );
+}
+
+#[test]
 fn test_parenthesized_function_application() {
     let f = single_formula("p (f a)");
     let expected = Formula::atom(Atom::new(

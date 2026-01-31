@@ -56,6 +56,28 @@ fn sggs_move_rejects_conflict_without_assignment() {
 }
 
 #[test]
+fn sggs_move_rejects_conflict_when_other_literal_assigned_to_same_clause() {
+    // Def. 25: move requires that no other literal of the conflict clause is assigned to C.
+    let a = Term::constant("a");
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![a.clone()])]),
+        0,
+    ));
+    let conflict = ConstrainedClause::new(
+        Clause::new(vec![
+            Literal::neg("P", vec![a.clone()]),
+            Literal::neg("P", vec![a.clone()]),
+        ]),
+        0,
+    );
+    trail.push(conflict);
+
+    let result = sggs_move(&mut trail, 1);
+    assert!(matches!(result, Err(MoveError::NoValidPosition)));
+}
+
+#[test]
 fn sggs_move_moves_before_rightmost_assignment() {
     // Source: paper6.pdf, assignment rule: selected I-true literal is assigned rightmost.
     // Source: SGGSdpFOL.pdf, Fig. 2 (move rule).

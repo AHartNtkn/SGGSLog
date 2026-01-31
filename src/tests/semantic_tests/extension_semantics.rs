@@ -337,15 +337,9 @@ fn extension_non_conflicting_selects_literal_with_proper_instances() {
     match sggs_extension(&trail, &theory) {
         ExtensionResult::Extended(cc) => {
             // Semantic requirement: if there exists an I-false literal whose instances
-            // do not intersect any selected literal in dp(Γ), the selected literal
-            // must be one of those.
-            let dp_len = trail.disjoint_prefix_length();
-            let dp_selected: Vec<_> = trail
-                .clauses()
-                .iter()
-                .take(dp_len)
-                .map(|c| c.selected_literal())
-                .collect();
+            // do not intersect any selected literal in Γ (sign-agnostic), the selected
+            // literal must be one of those.
+            let selected: Vec<_> = trail.clauses().iter().map(|c| c.selected_literal()).collect();
 
             let instantiated = [
                 Literal::pos("R", vec![Term::constant("a")]),
@@ -353,13 +347,9 @@ fn extension_non_conflicting_selects_literal_with_proper_instances() {
             ];
 
             let is_non_intersecting = |lit: &Literal| {
-                dp_selected.iter().all(|sel| {
-                    if lit.positive == sel.positive {
-                        true
-                    } else {
-                        unify_literals(lit, sel).is_failure()
-                    }
-                })
+                selected
+                    .iter()
+                    .all(|sel| unify_literals(lit, sel).is_failure())
             };
 
             let exists_non_intersecting = instantiated.iter().any(is_non_intersecting);
@@ -369,6 +359,13 @@ fn extension_non_conflicting_selects_literal_with_proper_instances() {
                     "selected literal should avoid complementary intersections when possible"
                 );
             }
+            let mut extended = trail.clone();
+            let idx = extended.len();
+            extended.push(cc.clone());
+            assert!(
+                extended.is_proper_selected_instance(idx, cc.selected_literal()),
+                "selected literal should have proper constrained ground instances"
+            );
             assert!(cc.selected_literal().positive, "selected literal must be I-false under I⁻");
         }
         other => panic!("Expected non-conflicting extension, got {:?}", other),

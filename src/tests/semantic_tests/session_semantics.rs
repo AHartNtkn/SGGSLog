@@ -312,6 +312,37 @@ fn session_load_file_normalizes_formulas() {
 }
 
 #[test]
+fn session_load_file_rejects_queries_and_directives() {
+    let mut session = Session::new();
+    let before = session.theory().clauses().len();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("sggslog_bad_{}.sggs", unique));
+    fs::write(&path, "p\n?- q\n").expect("write test file");
+
+    let err = session
+        .load_file(path.to_str().expect("path string"))
+        .expect_err("expected error for query in file");
+    assert!(!err.message.is_empty());
+    let after = session.theory().clauses().len();
+    assert_eq!(before, after, "theory should not change on invalid file");
+
+    let path2 = std::env::temp_dir().join(format!("sggslog_bad_dir_{}.sggs", unique));
+    fs::write(&path2, ":set timeout_ms 1\n").expect("write test file");
+    let err2 = session
+        .load_file(path2.to_str().expect("path string"))
+        .expect_err("expected error for directive in file");
+    assert!(!err2.message.is_empty());
+    let after2 = session.theory().clauses().len();
+    assert_eq!(before, after2, "theory should remain unchanged");
+
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(&path2);
+}
+
+#[test]
 fn session_query_does_not_expose_internal_symbols() {
     let mut session = Session::new();
     let unique = SystemTime::now()

@@ -39,4 +39,6 @@ pub enum Directive {
     Set(Setting),
     /// Request the next answer in the current query stream
     Next,
+    /// Quit the session
+    Quit,
 }

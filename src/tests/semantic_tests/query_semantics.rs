@@ -470,6 +470,29 @@ fn projected_query_filters_internal_functions() {
 }
 
 #[test]
+fn projected_query_filters_internal_symbols_nested_in_user_terms() {
+    // Internal symbols inside user terms should be filtered under OnlyUserSymbols.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::app("f", vec![Term::constant("$sk0")])],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let mut user_sig = crate::syntax::UserSignature::empty();
+    user_sig.insert_function("f", 1, None);
+
+    let mut stream = answer_query_projected(
+        &theory,
+        &query,
+        crate::sggs::DerivationConfig::default(),
+        &user_sig,
+        ProjectionPolicy::OnlyUserSymbols,
+    );
+    assert!(matches!(stream.next(), QueryResult::Exhausted));
+}
+
+#[test]
 fn projected_query_keeps_user_witnesses_and_drops_internal() {
     // Mixed answers: p(a) should be kept, p($sk0) should be dropped.
     let mut theory = crate::theory::Theory::new();

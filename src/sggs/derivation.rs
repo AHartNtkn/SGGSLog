@@ -127,7 +127,7 @@ impl DerivationState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraint::Constraint;
+    use crate::constraint::{AtomicConstraint, Constraint};
     use crate::sggs::ConstrainedClause;
     use crate::syntax::{Clause, Literal, Term};
 
@@ -275,6 +275,7 @@ mod tests {
         assert_eq!(step.trail_len_after, state.trail().len());
     }
 
+    #[test]
     fn applicable_inferences_includes_left_split() {
         // Left-split applies when an I-all-true clause is assigned to a dp(Γ) clause
         // with strict subset condition ¬Gr(B⊲M) ⊂ pcgi(A⊲L,Γ), and no factoring (†).
@@ -375,6 +376,46 @@ mod tests {
         assert!(
             !rules.contains(&InferenceRule::Resolution),
             "resolution should not apply when justifications are outside dp(Γ)"
+        );
+    }
+
+    #[test]
+    fn applicable_inferences_excludes_resolution_without_entailment() {
+        // SGGS-resolution (Def. 26) requires A |= Bϑ; if not, resolution is inapplicable.
+        let x = Term::var("X");
+        let a = Term::constant("a");
+        let b = Term::constant("b");
+        let b_constraint = Constraint::Atomic(AtomicConstraint::Identical(x.clone(), a.clone()));
+        let a_constraint = Constraint::Or(
+            Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+                x.clone(),
+                a.clone(),
+            ))),
+            Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+                x.clone(),
+                b.clone(),
+            ))),
+        );
+
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+        // I-all-true clause in dp(Γ) with selected ¬P(X), constrained to X = a.
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::neg("P", vec![x.clone()])]),
+            b_constraint.clone(),
+            0,
+        ));
+        // Conflict clause with selected P(X), but constraint allows X = a or X = b.
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::pos("P", vec![x.clone()])]),
+            a_constraint,
+            0,
+        ));
+
+        let theory = Theory::new();
+        let rules = applicable_inferences(&trail, &theory);
+        assert!(
+            !rules.contains(&InferenceRule::Resolution),
+            "resolution requires A |= Bϑ; broader A must not resolve against tighter B"
         );
     }
 

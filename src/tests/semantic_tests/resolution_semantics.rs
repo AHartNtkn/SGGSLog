@@ -10,6 +10,7 @@ use super::*;
 //
 // Reference: [BP17] Section 5 - Conflict Explanation
 // "Resolution is used to explain conflicts and derive lemmas."
+use crate::constraint::{AtomicConstraint, Constraint};
 use crate::sggs::{
     sggs_resolution, ConstrainedClause, InitialInterpretation, ResolutionResult, Trail,
 };
@@ -40,6 +41,62 @@ fn resolution_preserves_conflict() {
         }
         ResolutionResult::EmptyClause => {
             panic!("Expected non-empty conflict-preserving resolvent");
+        }
+    }
+}
+
+#[test]
+fn resolution_uses_conflict_constraint_when_entails_justification() {
+    // SGGSdpFOL Def. 26: requires A |= Bϑ; resolvent keeps A as its constraint.
+    let a = Term::constant("a");
+    let b = Term::constant("b");
+    let x = Term::var("X");
+    let constraint_a = Constraint::Atomic(AtomicConstraint::Identical(x.clone(), a.clone()));
+    let constraint_b = Constraint::Or(
+        Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+            x.clone(),
+            a.clone(),
+        ))),
+        Box::new(Constraint::Atomic(AtomicConstraint::Identical(
+            x.clone(),
+            b.clone(),
+        ))),
+    );
+
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let justification = ConstrainedClause::with_constraint(
+        Clause::new(vec![
+            Literal::neg("P", vec![x.clone()]),
+            Literal::pos("S", vec![a.clone()]),
+        ]),
+        constraint_b.clone(),
+        0,
+    );
+    trail.push(justification);
+
+    let conflict = ConstrainedClause::with_constraint(
+        Clause::new(vec![
+            Literal::pos("P", vec![x.clone()]),
+            Literal::pos("R", vec![a.clone()]),
+        ]),
+        constraint_a.clone(),
+        0,
+    );
+    trail.push(conflict.clone());
+
+    match sggs_resolution(&conflict, &trail) {
+        ResolutionResult::Resolvent(res) => {
+            assert_eq!(res.constraint, constraint_a);
+            assert_eq!(
+                res.clause.literals,
+                vec![
+                    Literal::pos("R", vec![a.clone()]),
+                    Literal::pos("S", vec![a.clone()])
+                ]
+            );
+        }
+        ResolutionResult::EmptyClause => {
+            panic!("Expected non-empty resolvent with preserved constraint");
         }
     }
 }

@@ -24,7 +24,7 @@ Constants are represented as 0-ary function symbols in the internal term languag
 Queries are answered against the SGGS-constructed model (not by refutation), and user-visible answers are deduplicated (including duplicates arising from alpha-equivalent clauses). Query answers are streamed: a query returns the first answer (if any), and subsequent answers are retrieved explicitly via `:next`. When no more answers remain, the user is told the query is exhausted.
 Unsatisfiable queries produce no answers and are immediately exhausted. If the theory is unsatisfiable, queries likewise yield no answers and are immediately exhausted (no model is exposed).
 
-Projection of answers is part of the external API. By default, only user-provided symbols may appear in answers; internal symbols (e.g., Skolem symbols) are filtered. A projection mode that allows internal symbols is supported. When projection is `only_user_symbols`, streamed answers are restricted to terms built from the user signature.
+Projection of answers is part of the external API. By default, only user-provided symbols may appear in answers; internal symbols (e.g., Skolem symbols) are filtered by discarding any answer that contains them (answers are not rewritten). A projection mode that allows internal symbols is supported. When projection is `only_user_symbols`, streamed answers are restricted to terms built from the user signature.
 
 Negative-only queries (variables appearing only in negated literals) are allowed. When projection is `only_user_symbols`, such queries stream answers over the user signature (and may be infinite).
 

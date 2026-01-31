@@ -9,42 +9,35 @@ use super::*;
 
 use crate::constraint::Constraint;
 use crate::sggs::{
-    sggs_extension, sggs_factoring, sggs_left_split, sggs_move, sggs_resolution, ConstrainedClause,
-    ExtensionResult, InitialInterpretation, ResolutionResult, Trail,
+    sggs_factoring, sggs_left_split, sggs_move, sggs_resolution, ConstrainedClause,
+    InitialInterpretation, ResolutionResult, Trail,
 };
 
 #[test]
 fn conflict_solving_chain_reaches_empty_clause() {
     // Theory: P(a), ¬P(x) ∨ Q(x), ¬Q(a)
+    // Build the trail explicitly to avoid assuming a deterministic extension order.
     let a = Term::constant("a");
-    let theory = theory_from_clauses(vec![
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::pos("P", vec![a.clone()])]),
+        Constraint::True,
+        0,
+    ));
+    // Select Q(X) to make Q(a) true and justify ¬Q(a).
+    trail.push(ConstrainedClause::with_constraint(
         Clause::new(vec![
             Literal::neg("P", vec![Term::var("X")]),
             Literal::pos("Q", vec![Term::var("X")]),
         ]),
+        Constraint::True,
+        1,
+    ));
+    let conflict = ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::neg("Q", vec![a.clone()])]),
-    ]);
-
-    let mut trail = Trail::new(InitialInterpretation::AllNegative);
-
-    // Extension 1: add P(a)
-    match sggs_extension(&trail, &theory) {
-        ExtensionResult::Extended(cc) => trail.push(cc),
-        other => panic!("Expected extension for P(a), got {:?}", other),
-    }
-
-    // Extension 2: add ¬P(a) ∨ Q(a)
-    match sggs_extension(&trail, &theory) {
-        ExtensionResult::Extended(cc) => trail.push(cc),
-        other => panic!("Expected extension for ¬P(a) ∨ Q(a), got {:?}", other),
-    }
-
-    // Extension 3: add ¬Q(a) as a conflict clause
-    let conflict = match sggs_extension(&trail, &theory) {
-        ExtensionResult::Conflict(cc) => cc,
-        other => panic!("Expected conflict extension, got {:?}", other),
-    };
+        Constraint::True,
+        0,
+    );
     trail.push(conflict.clone());
 
     // Move conflict clause before its rightmost justification (Q(a)).
