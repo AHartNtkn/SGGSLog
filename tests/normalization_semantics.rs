@@ -543,6 +543,29 @@ fn test_skolem_symbols_fresh_across_clauses() {
 }
 
 #[test]
+fn test_skolem_symbols_fresh_from_user_signature() {
+    // Skolem symbols must be fresh relative to user-provided symbols.
+    let clauses = clausify_src("p a\n∃X (p X)");
+    let mut p_consts = std::collections::HashSet::new();
+    for c in clauses {
+        for lit in c.literals {
+            if lit.atom.predicate == "p" && lit.atom.args.len() == 1 {
+                if let Term::App(sym, args) = &lit.atom.args[0] {
+                    if sym.arity == 0 && args.is_empty() {
+                        p_consts.insert(sym.name.clone());
+                    }
+                }
+            }
+        }
+    }
+    assert!(p_consts.contains("a"));
+    assert!(
+        p_consts.len() >= 2,
+        "Skolem constant must be distinct from user constant"
+    );
+}
+
+#[test]
 fn test_skolem_functions_fresh_across_statements_with_universals() {
     // Each existential in separate statements should get a fresh Skolem function
     // even if the formulas are alpha-equivalent.

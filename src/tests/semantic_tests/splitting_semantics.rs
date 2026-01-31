@@ -143,6 +143,26 @@ fn splitting_returns_none_for_disjoint_literals() {
 }
 
 #[test]
+fn splitting_returns_none_when_constraints_exclude_intersection() {
+    // Intersections must be non-empty; constraints can make them empty.
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::Atomic(AtomicConstraint::NotIdentical(
+            Term::var("x"),
+            Term::constant("a"),
+        )),
+        0,
+    );
+    let other = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    );
+
+    assert!(crate::sggs::sggs_splitting(&clause, &other).is_none());
+}
+
+#[test]
 fn splitting_representative_matches_intersection() {
     let clause = ConstrainedClause::with_constraint(
         Clause::new(vec![Literal::pos(

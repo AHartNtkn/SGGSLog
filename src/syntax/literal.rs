@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use crate::unify::Substitution;
 use super::term::{Term, Var};
 
 /// An atom (predicate application).
@@ -41,7 +42,7 @@ impl Atom {
     }
 
     /// Apply a substitution to this atom.
-    pub fn apply_subst(&self, subst: &std::collections::HashMap<Var, Term>) -> Atom {
+    pub fn apply_subst(&self, subst: &Substitution) -> Atom {
         todo!("Atom::apply_subst implementation")
     }
 }
@@ -107,7 +108,7 @@ impl Literal {
     }
 
     /// Apply a substitution to this literal.
-    pub fn apply_subst(&self, subst: &std::collections::HashMap<Var, Term>) -> Literal {
+    pub fn apply_subst(&self, subst: &Substitution) -> Literal {
         todo!("Literal::apply_subst implementation")
     }
 }
@@ -115,6 +116,15 @@ impl Literal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::unify::Substitution;
+
+    fn subst(pairs: Vec<(Var, Term)>) -> Substitution {
+        let mut subst = Substitution::empty();
+        for (v, t) in pairs {
+            subst.bind(v, t);
+        }
+        subst
+    }
 
     // === Atom construction tests ===
 
@@ -203,8 +213,7 @@ mod tests {
     #[test]
     fn test_literal_apply_subst_preserves_sign() {
         let lit = Literal::neg("p", vec![Term::var("X"), Term::constant("a")]);
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("b"));
+        let subst = subst(vec![(Var::new("X"), Term::constant("b"))]);
         let applied = lit.apply_subst(&subst);
         assert!(!applied.positive);
         assert_eq!(
@@ -258,8 +267,7 @@ mod tests {
     #[test]
     fn test_literal_subst_application() {
         let lit = Literal::pos("p", vec![Term::var("X")]);
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
+        let subst = subst(vec![(Var::new("X"), Term::constant("a"))]);
         let result = lit.apply_subst(&subst);
         assert_eq!(result.atom.args[0], Term::constant("a"));
         assert!(result.positive);
@@ -268,8 +276,7 @@ mod tests {
     #[test]
     fn test_literal_subst_preserves_sign() {
         let lit = Literal::neg("p", vec![Term::var("X")]);
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
+        let subst = subst(vec![(Var::new("X"), Term::constant("a"))]);
         let result = lit.apply_subst(&subst);
         assert!(!result.positive);
     }

@@ -594,3 +594,61 @@ fn session_tracks_user_signature_from_input() {
 
     let _ = fs::remove_file(&path);
 }
+
+#[test]
+fn session_user_signature_excludes_auxiliary_predicates() {
+    // User signature should include only predicates from the original input, even if
+    // normalization introduces auxiliary predicates.
+    let mut session = Session::new();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("sggslog_auxsig_{}.sggs", unique));
+    fs::write(&path, "(p ∧ q) -> r\n").expect("write test file");
+
+    let _ = session
+        .load_file(path.to_str().expect("path string"))
+        .expect("load_file failed");
+
+    let sig = session.user_signature().signature();
+    let names: std::collections::HashSet<_> = sig.predicates.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names.len(), 3);
+    assert!(names.contains("p"));
+    assert!(names.contains("q"));
+    assert!(names.contains("r"));
+
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn session_projection_allows_user_symbols_named_like_skolems() {
+    // OnlyUserSymbols must not filter user-provided symbols based on naming conventions.
+    let mut session = Session::new();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("sggslog_user_sk_{}.sggs", unique));
+    fs::write(&path, "p $sk0\n").expect("write test file");
+
+    let _ = session
+        .load_file(path.to_str().expect("path string"))
+        .expect("load_file failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("Y")],
+    )]));
+    let result = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    let answer = match result {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(ans)) => ans,
+        other => panic!("expected answer, got {:?}", other),
+    };
+    let y = Var::new("Y");
+    assert_eq!(answer.lookup(&y), Some(&Term::constant("$sk0")));
+
+    let _ = fs::remove_file(&path);
+}

@@ -99,16 +99,17 @@ fn fairness_reports_deletion_applicable_when_prefix_satisfies_clause() {
 
 #[test]
 fn fairness_excludes_extension_when_conflict_exists() {
-    // When a conflict clause exists, conflict-solving or deletion must take precedence.
+    // When a conflict clause exists, conflict-solving or deletion must take precedence
+    // in the scheduling policy (Def. 32 sensible SGGS-derivation).
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
     trail.push(unit(Literal::neg("P", vec![Term::constant("a")])));
 
     let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
-    let applicable = applicable_inferences(&trail, &theory);
+    let next = next_inference(&trail, &theory);
     assert!(
-        !applicable.contains(&InferenceRule::Extension),
-        "extension should not be applicable in presence of a conflict"
+        !matches!(next, InferenceRule::Extension),
+        "extension must not be chosen while a conflict exists"
     );
 }
 

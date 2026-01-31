@@ -98,9 +98,9 @@ fn substitution_preserves_literal_count() {
         Literal::pos("p", vec![Term::var("X")]),
         Literal::neg("q", vec![Term::var("Y")]),
     ]);
-    let mut subst = HashMap::new();
-    subst.insert(Var::new("X"), Term::constant("a"));
-    subst.insert(Var::new("Y"), Term::constant("b"));
+    let mut subst = Substitution::empty();
+    subst.bind(Var::new("X"), Term::constant("a"));
+    subst.bind(Var::new("Y"), Term::constant("b"));
     let result = clause.apply_subst(&subst);
     assert_eq!(
         result.literals.len(),
@@ -115,8 +115,8 @@ fn substitution_preserves_signs() {
         Literal::pos("p", vec![Term::var("X")]),
         Literal::neg("q", vec![Term::var("Y")]),
     ]);
-    let mut subst = HashMap::new();
-    subst.insert(Var::new("X"), Term::constant("a"));
+    let mut subst = Substitution::empty();
+    subst.bind(Var::new("X"), Term::constant("a"));
     let result = clause.apply_subst(&subst);
     assert!(result.literals[0].positive, "Sign must be preserved");
     assert!(!result.literals[1].positive, "Sign must be preserved");
@@ -128,8 +128,8 @@ fn substitution_applies_recursively_to_nested_terms() {
         "p",
         vec![Term::app("f", vec![Term::var("X")])],
     )]);
-    let mut subst = HashMap::new();
-    subst.insert(Var::new("X"), Term::constant("a"));
+    let mut subst = Substitution::empty();
+    subst.bind(Var::new("X"), Term::constant("a"));
     let result = clause.apply_subst(&subst);
     assert_eq!(
         result.literals[0].atom.args[0],

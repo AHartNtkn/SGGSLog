@@ -243,6 +243,17 @@ mod tests {
     }
 
     #[test]
+    fn derive_respects_timeout_zero() {
+        let theory = Theory::new();
+        let config = DerivationConfig {
+            timeout_ms: Some(0),
+            initial_interp: InitialInterpretation::AllNegative,
+        };
+        let result = derive(&theory, config);
+        assert!(matches!(result, DerivationResult::Timeout));
+    }
+
+    #[test]
     fn derive_with_trace_step_chain_is_consistent() {
         let theory = Theory::new();
         let (result, trace) = derive_with_trace(&theory, DerivationConfig::default());

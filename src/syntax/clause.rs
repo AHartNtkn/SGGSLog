@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use crate::unify::Substitution;
 use super::literal::Literal;
 use super::order::AtomOrder;
 use super::term::{Term, Var};
@@ -58,7 +59,7 @@ impl Clause {
     }
 
     /// Apply a substitution to this clause.
-    pub fn apply_subst(&self, subst: &std::collections::HashMap<Var, Term>) -> Clause {
+    pub fn apply_subst(&self, subst: &Substitution) -> Clause {
         todo!("Clause::apply_subst implementation")
     }
 
@@ -137,6 +138,15 @@ impl Clause {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::unify::Substitution;
+
+    fn subst(pairs: Vec<(Var, Term)>) -> Substitution {
+        let mut subst = Substitution::empty();
+        for (v, t) in pairs {
+            subst.bind(v, t);
+        }
+        subst
+    }
     use crate::syntax::term::Term;
 
     // === Construction tests ===
@@ -270,9 +280,10 @@ mod tests {
             Literal::pos("p", vec![Term::var("X")]),
             Literal::neg("q", vec![Term::var("Y")]),
         ]);
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
-        subst.insert(Var::new("Y"), Term::constant("b"));
+        let subst = subst(vec![
+            (Var::new("X"), Term::constant("a")),
+            (Var::new("Y"), Term::constant("b")),
+        ]);
 
         let result = clause.apply_subst(&subst);
         assert_eq!(result.literals.len(), 2);

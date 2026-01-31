@@ -144,3 +144,80 @@ fn resolution_inapplicable_when_constraint_not_entails() {
         other => panic!("Expected inapplicable resolution, got {:?}", other),
     }
 }
+
+#[test]
+fn resolution_inapplicable_when_clause_is_not_conflict() {
+    // Resolution applies only to conflict clauses (all literals uniformly false).
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // I-all-true justification in dp(Γ).
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    // Not a conflict: contains an I-true literal under I⁻.
+    let not_conflict = ConstrainedClause::new(
+        Clause::new(vec![
+            Literal::pos("P", vec![Term::constant("a")]),
+            Literal::neg("Q", vec![Term::constant("a")]),
+        ]),
+        0,
+    );
+    trail.push(not_conflict.clone());
+
+    match sggs_resolution(&not_conflict, &trail) {
+        ResolutionResult::Inapplicable => {}
+        other => panic!("Expected inapplicable resolution, got {:?}", other),
+    }
+}
+
+#[test]
+fn resolution_inapplicable_when_justification_outside_dp() {
+    // Resolution requires the justification to be in dp(Γ).
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // dp(Γ) will stop at index 1 due to unifiable selected literals.
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("b")])]),
+        0,
+    ));
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::var("X")])]),
+        0,
+    ));
+
+    let conflict = ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    );
+    trail.push(conflict.clone());
+
+    match sggs_resolution(&conflict, &trail) {
+        ResolutionResult::Inapplicable => {}
+        other => panic!("Expected inapplicable resolution, got {:?}", other),
+    }
+}
+
+#[test]
+fn resolution_inapplicable_when_justification_not_i_all_true() {
+    // Justification must be I-all-true; under I⁻ a positive clause is I-false.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let justification = ConstrainedClause::new(
+        Clause::new(vec![
+            Literal::neg("P", vec![Term::constant("a")]),
+            Literal::pos("Q", vec![Term::constant("a")]),
+        ]),
+        0,
+    );
+    trail.push(justification);
+
+    let conflict = ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    );
+    trail.push(conflict.clone());
+
+    match sggs_resolution(&conflict, &trail) {
+        ResolutionResult::Inapplicable => {}
+        other => panic!("Expected inapplicable resolution, got {:?}", other),
+    }
+}

@@ -1,6 +1,7 @@
 use proptest::prelude::*;
 use sggslog::syntax::{Atom, Clause, Literal, Term, Var};
-use std::collections::{HashMap, HashSet};
+use sggslog::unify::Substitution;
+use std::collections::HashSet;
 
 // ============================================================================
 // Strategies
@@ -134,7 +135,7 @@ proptest! {
 
     #[test]
     fn prop_term_substitution_identity(term in any_term()) {
-        let subst = HashMap::new();
+        let subst = Substitution::empty();
         prop_assert_eq!(term.apply_subst(&subst), term);
     }
 

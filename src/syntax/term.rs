@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 
+use crate::unify::Substitution;
+
 /// A variable in first-order logic.
 /// Variables are implicitly universally quantified and represented by capitalized names.
 /// Variables may optionally carry a sort annotation.
@@ -123,9 +125,7 @@ impl Term {
     }
 
     /// Apply a substitution to this term.
-    /// Note: Substitution type is defined in the unify module.
-    /// For now, we use a simple HashMap representation.
-    pub fn apply_subst(&self, subst: &std::collections::HashMap<Var, Term>) -> Term {
+    pub fn apply_subst(&self, subst: &Substitution) -> Term {
         todo!("apply_subst implementation")
     }
 
@@ -144,6 +144,15 @@ impl Term {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::unify::Substitution;
+
+    fn subst(pairs: Vec<(Var, Term)>) -> Substitution {
+        let mut subst = Substitution::empty();
+        for (v, t) in pairs {
+            subst.bind(v, t);
+        }
+        subst
+    }
 
     // === Construction tests ===
 
@@ -244,9 +253,10 @@ mod tests {
             "f",
             vec![Term::var("X"), Term::app("g", vec![Term::var("Y")])],
         );
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
-        subst.insert(Var::new("Y"), Term::constant("b"));
+        let subst = subst(vec![
+            (Var::new("X"), Term::constant("a")),
+            (Var::new("Y"), Term::constant("b")),
+        ]);
         let applied = term.apply_subst(&subst);
         assert_eq!(
             applied,
@@ -401,8 +411,8 @@ mod tests {
     #[test]
     fn test_subst_on_var_bound() {
         let term = Term::var("X");
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("socrates"));
+        let mut subst = Substitution::empty();
+        subst.bind(Var::new("X"), Term::constant("socrates"));
         let result = term.apply_subst(&subst);
         assert_eq!(result, Term::constant("socrates"));
     }
@@ -410,7 +420,7 @@ mod tests {
     #[test]
     fn test_subst_on_var_unbound() {
         let term = Term::var("X");
-        let subst = std::collections::HashMap::new();
+        let subst = Substitution::empty();
         let result = term.apply_subst(&subst);
         assert_eq!(result, Term::var("X"));
     }
@@ -418,8 +428,8 @@ mod tests {
     #[test]
     fn test_subst_on_const() {
         let term = Term::constant("socrates");
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("plato"));
+        let mut subst = Substitution::empty();
+        subst.bind(Var::new("X"), Term::constant("plato"));
         let result = term.apply_subst(&subst);
         assert_eq!(result, Term::constant("socrates"));
     }
@@ -428,9 +438,10 @@ mod tests {
     fn test_subst_recursive_in_app() {
         // (f X Y) with {X -> a, Y -> b} => (f a b)
         let term = Term::app("f", vec![Term::var("X"), Term::var("Y")]);
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
-        subst.insert(Var::new("Y"), Term::constant("b"));
+        let subst = subst(vec![
+            (Var::new("X"), Term::constant("a")),
+            (Var::new("Y"), Term::constant("b")),
+        ]);
         let result = term.apply_subst(&subst);
         assert_eq!(
             result,
@@ -443,8 +454,7 @@ mod tests {
         // (f (g X) Y) with {X -> a} => (f (g a) Y)
         let inner = Term::app("g", vec![Term::var("X")]);
         let outer = Term::app("f", vec![inner, Term::var("Y")]);
-        let mut subst = std::collections::HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
+        let subst = subst(vec![(Var::new("X"), Term::constant("a"))]);
         let result = outer.apply_subst(&subst);
 
         let expected_inner = Term::app("g", vec![Term::constant("a")]);

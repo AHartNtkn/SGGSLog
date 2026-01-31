@@ -295,6 +295,38 @@ fn query_stream_dedups_duplicate_facts() {
 }
 
 #[test]
+fn query_repeated_variable_enforces_equality() {
+    // Query p(X, X) should only return bindings where both args are equal.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a"), Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a"), Term::constant("b")],
+    )]));
+
+    let query = Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("X"), Term::var("X")],
+    )]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+    match stream.next() {
+        QueryResult::Answer(ans) => {
+            let x = Var::new("X");
+            assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
+            assert_no_spurious_bindings(&[ans], &query.variables());
+        }
+        other => panic!("Expected answer for repeated-variable query, got {:?}", other),
+    }
+    match stream.next() {
+        QueryResult::Exhausted => {}
+        other => panic!("Expected exhausted stream, got {:?}", other),
+    }
+}
+
+#[test]
 fn query_stream_dedups_alpha_equivalent_clauses() {
     // Two alpha-equivalent clauses should not yield duplicate answers.
     let mut theory = crate::theory::Theory::new();

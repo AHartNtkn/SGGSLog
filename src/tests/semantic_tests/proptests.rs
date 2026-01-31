@@ -65,13 +65,13 @@ fn arb_clause(depth: u32) -> impl Strategy<Value = Clause> {
     prop::collection::vec(arb_literal(depth), 0..=5).prop_map(Clause::new)
 }
 
-fn arb_subst_map(depth: u32) -> impl Strategy<Value = HashMap<Var, Term>> {
+fn arb_substitution(depth: u32) -> impl Strategy<Value = Substitution> {
     prop::collection::vec((arb_var(), arb_term(depth)), 0..=4).prop_map(|pairs| {
-        let mut map = HashMap::new();
+        let mut subst = Substitution::empty();
         for (v, t) in pairs {
-            map.insert(v, t);
+            subst.bind(v, t);
         }
-        map
+        subst
     })
 }
 
@@ -137,8 +137,8 @@ proptest! {
         // Substitution distributes over function application
         let term = Term::app(&name, vec![arg1.clone(), arg2.clone()]);
         let var = Var::new(&var_name);
-        let mut subst = HashMap::new();
-        subst.insert(var.clone(), replacement.clone());
+        let mut subst = Substitution::empty();
+        subst.bind(var.clone(), replacement.clone());
         let substituted = term.apply_subst(&subst);
         match substituted {
             Term::App(sym, args) => {
@@ -211,7 +211,7 @@ proptest! {
     #[test]
     fn ground_term_unchanged_by_substitution(
         term in arb_ground_term(2),
-        subst in arb_subst_map(2)
+        subst in arb_substitution(2)
     ) {
         let applied = term.apply_subst(&subst);
         prop_assert_eq!(applied, term);
@@ -287,8 +287,8 @@ proptest! {
             })
             .collect();
         let clause = Clause::new(literals);
-        let mut subst = HashMap::new();
-        subst.insert(Var::new("X"), Term::constant("a"));
+        let mut subst = Substitution::empty();
+        subst.bind(Var::new("X"), Term::constant("a"));
         let result = clause.apply_subst(&subst);
         prop_assert_eq!(result.literals.len(), clause.literals.len());
     }

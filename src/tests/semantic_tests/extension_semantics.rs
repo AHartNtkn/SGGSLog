@@ -199,6 +199,60 @@ fn extension_requires_side_premises_in_disjoint_prefix() {
     }
 }
 
+#[test]
+fn extension_inapplicable_when_trail_not_disjoint_prefix() {
+    // SGGS-extension applies only when Γ = dp(Γ).
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]),
+        0,
+    ));
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "Q",
+        vec![Term::constant("a")],
+    )])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {}
+        other => panic!(
+            "Expected NoExtension when Γ != dp(Γ), got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_inapplicable_when_conflict_exists() {
+    // If a conflict clause exists, extension should not be applicable.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "Q",
+        vec![Term::constant("a")],
+    )])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {}
+        other => panic!(
+            "Expected NoExtension when a conflict exists, got {:?}",
+            other
+        ),
+    }
+}
+
 /// "Let C ∈ S be a clause such that L1,…,Ln (n ≥ 0) are all its I-true literals."
 /// (SGGSdpFOL, Definition 1)
 ///
