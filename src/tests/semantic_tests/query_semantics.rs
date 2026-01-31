@@ -180,6 +180,25 @@ fn non_ground_query_derived_answer() {
 }
 
 #[test]
+fn answer_query_does_not_project_internal_symbols() {
+    // answer_query returns unprojected answers (spec.md).
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("$sk0")],
+    )]));
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+    match stream.next() {
+        QueryResult::Answer(ans) => {
+            let x = Var::new("X");
+            assert_eq!(ans.lookup(&x), Some(&Term::constant("$sk0")));
+        }
+        other => panic!("Expected answer with internal symbol, got {:?}", other),
+    }
+}
+
+#[test]
 fn conjunctive_query_multiple_answers() {
     let mut theory = crate::theory::Theory::new();
     theory.add_clause(Clause::new(vec![Literal::pos(

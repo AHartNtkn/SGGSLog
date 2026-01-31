@@ -1,6 +1,6 @@
 //! AST types for SGGSLog surface syntax.
 
-use crate::syntax::{Clause, Formula, Literal};
+use crate::syntax::{Clause, Formula, Literal, Query};
 
 /// A statement in a SGGSLog source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,7 +10,7 @@ pub enum Statement {
     /// A formula (surface syntax, not yet normalized)
     Formula(Formula),
     /// A query to prove
-    Query(Vec<Literal>),
+    Query(Query),
     /// A directive
     Directive(Directive),
 }

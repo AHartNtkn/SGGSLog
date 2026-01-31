@@ -14,3 +14,4 @@ This repo implements SGGS as specified by SGGS papers and `spec.md`. The goal is
 - Never mention implementation complexity or refactor size; the user only cares about the final result.
 - Do not ask for permission or confirmation to proceed with requested work; proceed directly.
 - Do not implement any TODOs. Your only job is to ensure the spec implied by the existing tests and API stubs is correct and good; never implement the specified behavior.
+- **You are explicitly encouraged to change the API to improve it so long as it faithfully captures SGGS. Do not avoid a change just because it changes the public API.**

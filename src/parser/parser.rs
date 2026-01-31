@@ -1,7 +1,7 @@
 //! Parser for SGGSLog syntax.
 
 use super::ast::Statement;
-use crate::syntax::Literal;
+use crate::syntax::Query;
 
 /// Parse error with location information.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +26,6 @@ pub fn parse_file(_source: &str) -> Result<Vec<Statement>, ParseError> {
 }
 
 /// Parse a single query.
-pub fn parse_query(_source: &str) -> Result<Vec<Literal>, ParseError> {
+pub fn parse_query(_source: &str) -> Result<Query, ParseError> {
     todo!("parse_query implementation")
 }

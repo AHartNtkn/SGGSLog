@@ -6,6 +6,7 @@ use super::*;
 
 use crate::parser::{Directive, Statement};
 use crate::session::DirectiveResult;
+use crate::sggs::{answer_query, Query};
 use crate::session::{ExecResult, Session};
 use crate::syntax::{Atom, Formula};
 use std::fs;
@@ -58,11 +59,42 @@ fn session_executes_formula_statement() {
 #[test]
 fn session_executes_query_statement() {
     let mut session = Session::new();
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![])]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
     assert!(matches!(result, ExecResult::QueryResult(_)));
+}
+
+#[test]
+fn session_query_matches_sggs_query_semantics() {
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![
+            Literal::pos("p", vec![Term::constant("a")]),
+        ])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("X")],
+    )]));
+    let session_res = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    let session_ans = match session_res {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(ans)) => ans,
+        other => panic!("expected answer from session, got {:?}", other),
+    };
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let mut stream =
+        answer_query(session.theory(), &query, crate::sggs::DerivationConfig::default());
+    let sggs_ans = match stream.next() {
+        crate::sggs::QueryResult::Answer(ans) => ans,
+        other => panic!("expected answer from answer_query, got {:?}", other),
+    };
+    assert_eq!(session_ans, sggs_ans);
 }
 
 #[test]
@@ -82,7 +114,10 @@ fn session_new_query_resets_stream() {
         .execute_statement(Statement::Clause(fact))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("X")],
+    )]));
     let first = session
         .execute_statement(stmt.clone())
         .expect("execute_statement failed");
@@ -106,7 +141,10 @@ fn session_query_dedups_answers_by_execution_time() {
         .execute_statement(Statement::Clause(fact))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("X")],
+    )]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -146,7 +184,10 @@ fn session_dedups_alpha_equivalent_sources_in_answers() {
         )])))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -229,7 +270,10 @@ fn session_default_projection_policy_only_user_symbols() {
 #[test]
 fn session_execute_query_on_empty_theory() {
     let mut session = Session::new();
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -358,7 +402,10 @@ fn session_query_does_not_expose_internal_symbols() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("Y")],
+    )]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -424,7 +471,10 @@ fn session_query_without_projectable_witness_returns_no_answers() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("Y")],
+    )]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -462,7 +512,10 @@ fn session_query_allows_internal_symbols_when_enabled() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(vec![Literal::pos("p", vec![Term::var("Y")])]);
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("Y")],
+    )]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");

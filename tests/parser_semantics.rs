@@ -60,6 +60,14 @@ fn test_operator_precedence_and_parentheses() {
 }
 
 #[test]
+fn test_operator_precedence_ascii() {
+    // & should bind tighter than |: p | q & r == p | (q & r)
+    let f = single_formula("p | q & r");
+    let expected = Formula::or(atom("p"), Formula::and(atom("q"), atom("r")));
+    assert_eq!(f, expected);
+}
+
+#[test]
 fn test_quantifier_parsing_preserved() {
     let f = single_formula("∀X (p X)");
     let expected = Formula::forall(
@@ -158,10 +166,31 @@ fn test_sorted_identifiers_in_terms() {
 }
 
 #[test]
+fn test_sorted_constants_in_terms() {
+    let f = single_formula("p a:s1");
+    match f {
+        Formula::Atom(atom) => {
+            assert_eq!(atom.predicate, "p");
+            assert_eq!(atom.args.len(), 1);
+            match &atom.args[0] {
+                Term::App(sym, args) => {
+                    assert_eq!(sym.name, "a");
+                    assert_eq!(sym.arity, 0);
+                    assert_eq!(sym.result_sort.as_deref(), Some("s1"));
+                    assert!(args.is_empty());
+                }
+                _ => panic!("expected sorted constant as 0-ary application"),
+            }
+        }
+        _ => panic!("expected atom"),
+    }
+}
+
+#[test]
 fn test_query_parsing_with_ascii_and_unicode() {
     let q1 = parse_query("?- (p a) & (q a)").expect("parse_query failed");
     let q2 = parse_query("?- (p a) ∧ (q a)").expect("parse_query failed");
-    assert_eq!(q1.len(), 2);
+    assert_eq!(q1.literals.len(), 2);
     assert_eq!(q1, q2);
 }
 

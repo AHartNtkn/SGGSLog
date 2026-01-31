@@ -1,6 +1,6 @@
 use sggslog::normalize::{clausify_formula, clausify_statements};
 use sggslog::parser::{parse_file, Statement};
-use sggslog::syntax::{Clause, Formula, Literal, Term};
+use sggslog::syntax::{Clause, Formula, Literal, Query, Term};
 use std::collections::HashMap;
 
 fn single_formula(src: &str) -> sggslog::syntax::Formula {
@@ -173,7 +173,7 @@ fn test_clausify_statement_clause_passthrough() {
 
 #[test]
 fn test_clausify_statement_rejects_query_and_directive() {
-    let query = Statement::Query(vec![Literal::pos("p", vec![])]);
+    let query = Statement::Query(Query::new(vec![Literal::pos("p", vec![])]));
     assert!(
         sggslog::normalize::clausify_statement(&query).is_err(),
         "clausify_statement should reject queries"

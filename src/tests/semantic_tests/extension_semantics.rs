@@ -336,29 +336,8 @@ fn extension_non_conflicting_selects_literal_with_proper_instances() {
 
     match sggs_extension(&trail, &theory) {
         ExtensionResult::Extended(cc) => {
-            // Semantic requirement: if there exists an I-false literal whose instances
-            // do not intersect any selected literal in Γ (sign-agnostic), the selected
-            // literal must be one of those.
-            let selected: Vec<_> = trail.clauses().iter().map(|c| c.selected_literal()).collect();
-
-            let instantiated = [
-                Literal::pos("R", vec![Term::constant("a")]),
-                Literal::pos("S", vec![Term::constant("a")]),
-            ];
-
-            let is_non_intersecting = |lit: &Literal| {
-                selected
-                    .iter()
-                    .all(|sel| unify_literals(lit, sel).is_failure())
-            };
-
-            let exists_non_intersecting = instantiated.iter().any(is_non_intersecting);
-            if exists_non_intersecting {
-                assert!(
-                    is_non_intersecting(cc.selected_literal()),
-                    "selected literal should avoid complementary intersections when possible"
-                );
-            }
+            // Def. 20 requires a selected I-false literal with proper instances; it does not
+            // require avoiding intersections with selected literals in Γ.
             let mut extended = trail.clone();
             let idx = extended.len();
             extended.push(cc.clone());
