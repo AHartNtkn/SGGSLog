@@ -395,45 +395,147 @@ fn theory_epr_function_free() {
     assert!(!theory2.is_epr());
 }
 
-#[test]
-fn theory_bdi_ground_is_true_and_depth_increase_is_false() {
-    let mut t1 = crate::theory::Theory::new();
-    t1.add_clause(Clause::new(vec![Literal::pos(
+// =============================================================================
+// BDI (Bounded Depth Increase) fragment
+// =============================================================================
+//
+// Formal definition source:
+// Lamotte-Schubert, M. & Weidenbach, C. "BDI: a new decidable clause class."
+// Journal of Logic and Computation (2014).
+//
+// Formal definition (Lamotte-Schubert & Weidenbach, 2014):
+//
+// Let a clause be written Γ -> Δ (i.e., ¬Γ ∨ Δ). Let depth(t) be term depth
+// (variables/constants depth 0; f(t1..tn) has depth 1+max depth), and depth_x(t)
+// the max depth of variable x in t (0 if x does not occur). For a literal/atom,
+// depth_x is the max over its arguments; for Γ or Δ, depth_x is the max over all atoms.
+//
+// A watched-arguments function warg assigns each predicate symbol P a list of
+// watched argument positions. For an atom P(t1..tm), warg(P(t1..tm)) is the list
+// of subterms at those positions.
+//
+// Similar atoms: same predicate symbol and same term shape position-wise
+// (same function/constant symbols; variables may differ).
+//
+// Depth-increasing clause: there exist a variable x and a positive atom
+// P(t1..tm) in Δ with a unique depth-increasing position i such that:
+//   - depth_x(ti) > depth_x(Γ)
+//   - for all j != i, depth_x(tj) <= depth_x(Γ)
+//   - for every depth-increasing variable x, replacing ti with x yields
+//     depth_x(P(t1..t{i-1}, x, t{i+1}..tm)) <= depth_x(Γ)
+// The predicate P is the depth-increasing predicate, and i its unique position.
+//
+// Reachability: predicate Q is reachable from P if some clause has P in Γ and Q in Δ,
+// using the transitive closure. Depth-increasing predicates must be acyclic under
+// reachability (no cycles among depth-increasing predicates).
+//
+// Origination: terms in warg(P(...)) in a clause derived from a depth-increasing
+// clause must appear among warg(Q(...)) for some body atom Q in the originating
+// depth-increasing clause.
+//
+// BDI requires existence of a warg function such that every clause satisfies:
+//
+// PVD: Var(Δ) ⊆ Var(Γ) and for all x in Var(Δ), depth_x(Δ) <= depth_x(Γ), OR
+//
+// BDI-1 (Γ -> Δ is depth-increasing, P is the depth-increasing predicate, i unique):
+//   (i) Every atom P' in Δ is similar to P and uses the same depth-increasing position i.
+//   (ii) For any atom Q in Δ not similar to P, all watched arguments are variables.
+//   (iii) For any atom Q in Γ, all watched arguments are variables.
+//   (iv) For any similar pair Q in Γ and Q in Δ, their watched-argument lists are identical.
+//   (v) For any atom Q in Γ whose predicate is reachable from P, all watched arguments are variables.
+//
+// BDI-2 (Γ -> Δ is not depth-increasing):
+//   (i) For any atom P in Δ whose predicate is reachable from some depth-increasing clause,
+//       all watched arguments are variables.
+//   (ii) For any similar pair P in Δ and P' in Γ, their watched-argument lists are identical.
+//   (iii) For any depth-increasing clause C that reaches P, the watched arguments of P in
+//         this clause must originate from C.
+//
+// The tests below use the paper's example clause sets: one BDI set and one non-BDI set.
+
+fn bdi_example_from_paper() -> crate::theory::Theory {
+    // Source: Lamotte-Schubert & Weidenbach (2014), Example BDI clause set (1)-(5).
+    // (1) -> P(f(a), h(a), a)
+    // (2) P(x,y,z) -> Q(x,y,f(g(x))), S(x,y)
+    // (3) Q(x,y,f(u)) -> P(x,y,u)
+    // (4) S(x,y) -> T(x)
+    // (5) P(a,b,c) ->
+    let a = Term::constant("a");
+    let b = Term::constant("b");
+    let c = Term::constant("c");
+    let x = Term::var("x");
+    let y = Term::var("y");
+    let z = Term::var("z");
+    let u = Term::var("u");
+
+    let f_a = Term::app("f", vec![a.clone()]);
+    let h_a = Term::app("h", vec![a.clone()]);
+    let g_x = Term::app("g", vec![x.clone()]);
+    let f_g_x = Term::app("f", vec![g_x]);
+    let f_u = Term::app("f", vec![u.clone()]);
+
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
         "P",
-        vec![Term::constant("a")],
+        vec![f_a, h_a, a.clone()],
     )]));
-    assert!(t1.is_bdi());
-
-    let mut t2 = crate::theory::Theory::new();
-    t2.add_clause(Clause::new(vec![
-        Literal::neg("P", vec![Term::var("X")]),
-        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![x.clone(), y.clone(), z.clone()]),
+        Literal::pos("Q", vec![x.clone(), y.clone(), f_g_x]),
+        Literal::pos("S", vec![x.clone(), y.clone()]),
     ]));
-    assert!(!t2.is_bdi());
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("Q", vec![x.clone(), y.clone(), f_u]),
+        Literal::pos("P", vec![x.clone(), y.clone(), u]),
+    ]));
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("S", vec![x.clone(), y.clone()]),
+        Literal::pos("T", vec![x]),
+    ]));
+    theory.add_clause(Clause::new(vec![Literal::neg(
+        "P",
+        vec![a, b, c],
+    )]));
+    theory
+}
+
+fn bdi_counterexample_from_paper() -> crate::theory::Theory {
+    // Source: Lamotte-Schubert & Weidenbach (2014), BDI-1/BDI-2 counterexample (1)-(3).
+    // (1) P(f(x,y),z,u) -> P(x,z,y)
+    // (2) P(x,z,y) -> Q(x,g(z),u), Q(x,g(z),y)
+    // (3) Q(x,g(z),u) -> P(x,z,y)
+    let x = Term::var("x");
+    let y = Term::var("y");
+    let z = Term::var("z");
+    let u = Term::var("u");
+    let f_xy = Term::app("f", vec![x.clone(), y.clone()]);
+    let g_z = Term::app("g", vec![z.clone()]);
+
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![f_xy, z.clone(), u.clone()]),
+        Literal::pos("P", vec![x.clone(), z.clone(), y.clone()]),
+    ]));
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("P", vec![x.clone(), z.clone(), y.clone()]),
+        Literal::pos("Q", vec![x.clone(), g_z.clone(), u.clone()]),
+        Literal::pos("Q", vec![x.clone(), g_z, y.clone()]),
+    ]));
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("Q", vec![x.clone(), Term::app("g", vec![z]), u]),
+        Literal::pos("P", vec![x, Term::var("z"), y]),
+    ]));
+    theory
 }
 
 #[test]
-fn theory_bdi_allows_non_increasing_depth() {
-    let mut t = crate::theory::Theory::new();
-    t.add_clause(Clause::new(vec![
-        Literal::neg("P", vec![Term::app("f", vec![Term::var("X")])]),
-        Literal::pos("P", vec![Term::app("f", vec![Term::var("X")])]),
-    ]));
-    assert!(t.is_bdi());
+fn theory_bdi_example_from_paper_is_bdi() {
+    let theory = bdi_example_from_paper();
+    assert!(theory.is_bdi());
 }
 
 #[test]
-fn theory_bdi_allows_multi_arity_when_depth_constant() {
-    let mut t = crate::theory::Theory::new();
-    t.add_clause(Clause::new(vec![
-        Literal::neg(
-            "P",
-            vec![Term::app("f", vec![Term::var("X"), Term::var("Y")])],
-        ),
-        Literal::pos(
-            "P",
-            vec![Term::app("f", vec![Term::var("X"), Term::var("Y")])],
-        ),
-    ]));
-    assert!(t.is_bdi());
+fn theory_bdi_counterexample_from_paper_is_not_bdi() {
+    let theory = bdi_counterexample_from_paper();
+    assert!(!theory.is_bdi());
 }

@@ -1,7 +1,8 @@
 use sggslog::normalize::{clausify_formula, clausify_statements};
 use sggslog::parser::{parse_file, Statement};
-use sggslog::syntax::{Clause, Formula, Literal, Query, Term};
+use sggslog::syntax::{Atom, Clause, Formula, Literal, Query, Term};
 use std::collections::HashMap;
+use proptest::prelude::*;
 
 fn single_formula(src: &str) -> sggslog::syntax::Formula {
     let stmts = parse_file(src).expect("parse_file failed");
@@ -156,6 +157,99 @@ fn assert_conservative_extension(src: &str) {
     }
 }
 
+fn clause_to_formula_propositional(clause: &Clause) -> Formula {
+    // Convert a propositional clause (zero-ary atoms) into a Formula.
+    let mut iter = clause.literals.iter();
+    let first = iter
+        .next()
+        .expect("clause_to_formula_propositional requires non-empty clause");
+    let mut acc = literal_to_formula_propositional(first);
+    for lit in iter {
+        acc = Formula::or(acc, literal_to_formula_propositional(lit));
+    }
+    acc
+}
+
+fn literal_to_formula_propositional(lit: &Literal) -> Formula {
+    if !lit.atom.args.is_empty() {
+        panic!("propositional conversion only supports zero-ary predicates");
+    }
+    let atom = Formula::atom(Atom::prop(lit.atom.predicate.as_str()));
+    if lit.positive {
+        atom
+    } else {
+        Formula::not(atom)
+    }
+}
+
+fn assert_conservative_extension_formula(formula: &Formula, clauses: &[Clause]) {
+    let mut orig_preds = std::collections::HashSet::new();
+    collect_formula_preds(formula, &mut orig_preds);
+    let cnf_preds = collect_cnf_preds(clauses);
+    let new_preds: Vec<String> = cnf_preds.difference(&orig_preds).cloned().collect();
+
+    let orig_vars: Vec<String> = orig_preds.into_iter().collect();
+    let new_vars: Vec<String> = new_preds;
+
+    for env_orig in all_assignments(&orig_vars.iter().map(|s| s.as_str()).collect::<Vec<_>>()) {
+        let original = eval_formula(formula, &env_orig);
+        let mut exists_ext = false;
+        for env_new in all_assignments(&new_vars.iter().map(|s| s.as_str()).collect::<Vec<_>>()) {
+            let mut env_full = env_orig.clone();
+            for (k, v) in env_new {
+                env_full.insert(k, v);
+            }
+            if eval_cnf(clauses, &env_full) {
+                exists_ext = true;
+                break;
+            }
+        }
+        assert_eq!(
+            original, exists_ext,
+            "CNF must be a conservative extension over the original symbols"
+        );
+    }
+}
+
+fn arb_pred() -> impl Strategy<Value = String> {
+    prop_oneof![
+        Just("p".to_string()),
+        Just("q".to_string()),
+        Just("r".to_string()),
+        Just("s".to_string()),
+    ]
+}
+
+fn arb_formula(depth: u32) -> impl Strategy<Value = Formula> {
+    if depth == 0 {
+        arb_pred()
+            .prop_map(|p| Formula::atom(Atom::prop(p.as_str())))
+            .boxed()
+    } else {
+        prop_oneof![
+            arb_pred().prop_map(|p| Formula::atom(Atom::prop(p.as_str()))),
+            arb_formula(depth - 1).prop_map(Formula::not),
+            (arb_formula(depth - 1), arb_formula(depth - 1))
+                .prop_map(|(a, b)| Formula::and(a, b)),
+            (arb_formula(depth - 1), arb_formula(depth - 1))
+                .prop_map(|(a, b)| Formula::or(a, b)),
+            (arb_formula(depth - 1), arb_formula(depth - 1))
+                .prop_map(|(a, b)| Formula::implies(a, b)),
+        ]
+        .boxed()
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+    #[test]
+    fn clausify_conservative_extension_prop(formula in arb_formula(2)) {
+        let clauses = clausify_formula(&formula).expect("clausify_formula failed");
+        prop_assert!(!clauses.is_empty(), "expected at least one clause");
+        assert_conservative_extension_formula(&formula, &clauses);
+    }
+}
+
 #[test]
 fn test_clausify_statement_clause_passthrough() {
     let clause = Clause::new(vec![Literal::pos("p", vec![]), Literal::neg("q", vec![])]);
@@ -195,12 +289,15 @@ fn test_clausify_statements_mixed_clause_and_formula() {
             .any(|c| clause_has_literal(c, "p", true) && clause_has_literal(c, "q", false)),
         "explicit clause should appear in normalized output"
     );
-    assert!(
-        clauses
-            .iter()
-            .any(|c| clause_has_literal(c, "r", false) && clause_has_literal(c, "s", true)),
-        "implication should yield a clause with ¬r ∨ s (possibly among others)"
-    );
+
+    // Allow definitional/Tseitin CNF: require conservative extension over the original symbols.
+    let clause_formula = clause_to_formula_propositional(&Clause::new(vec![
+        Literal::pos("p", vec![]),
+        Literal::neg("q", vec![]),
+    ]));
+    let implication = single_formula("r -> s");
+    let combined = Formula::and(clause_formula, implication);
+    assert_conservative_extension_formula(&combined, &clauses);
 }
 
 fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
@@ -220,32 +317,54 @@ fn all_assignments(vars: &[&str]) -> Vec<HashMap<String, bool>> {
 fn test_implication_to_clause() {
     // Standard pipeline: eliminate implication and drop universals.
     let clauses = clausify_all("∀X ((p X) -> (q X))");
-    let clause = find_clause_with_predicates(&clauses, &["p", "q"]);
-    let mut var_term: Option<Term> = None;
-    let mut saw_p = false;
-    let mut saw_q = false;
-    for lit in &clause.literals {
-        match (
-            lit.positive,
-            lit.atom.predicate.as_str(),
-            lit.atom.args.as_slice(),
-        ) {
-            (false, "p", [t]) | (true, "q", [t]) => {
-                if lit.atom.predicate == "p" {
-                    saw_p = true;
-                } else {
-                    saw_q = true;
-                }
-                if let Some(prev) = &var_term {
-                    assert_eq!(prev, t, "same variable should be shared across literals");
-                } else {
-                    var_term = Some(t.clone());
-                }
-            }
-            _ => panic!("expected literals p(X) and q(X) with shared variable"),
+    let p_lits: Vec<&Literal> = clauses
+        .iter()
+        .flat_map(|c| c.literals.iter())
+        .filter(|l| l.atom.predicate == "p")
+        .collect();
+    let q_lits: Vec<&Literal> = clauses
+        .iter()
+        .flat_map(|c| c.literals.iter())
+        .filter(|l| l.atom.predicate == "q")
+        .collect();
+    assert!(!p_lits.is_empty(), "expected some occurrence of p in CNF");
+    assert!(!q_lits.is_empty(), "expected some occurrence of q in CNF");
+    let has_both = clauses.iter().any(|c| {
+        c.literals.iter().any(|l| l.atom.predicate == "p")
+            && c.literals.iter().any(|l| l.atom.predicate == "q")
+    });
+    assert!(
+        has_both,
+        "implication should produce at least one clause relating p and q"
+    );
+    for lit in p_lits.iter().chain(q_lits.iter()) {
+        match &lit.atom.args[0] {
+            Term::Var(_) => {}
+            _ => panic!("implication under ∀ should not introduce Skolem terms for p/q"),
         }
     }
-    assert!(saw_p && saw_q, "expected both p and q in clause");
+
+    // If any clause contains both p and q, their argument terms must match.
+    for clause in &clauses {
+        let p_terms: Vec<&Term> = clause
+            .literals
+            .iter()
+            .filter(|l| l.atom.predicate == "p")
+            .map(|l| &l.atom.args[0])
+            .collect();
+        let q_terms: Vec<&Term> = clause
+            .literals
+            .iter()
+            .filter(|l| l.atom.predicate == "q")
+            .map(|l| &l.atom.args[0])
+            .collect();
+        if let (Some(p), Some(q)) = (p_terms.first(), q_terms.first()) {
+            assert_eq!(
+                p, q,
+                "p and q occurrences in the same clause should share the same argument"
+            );
+        }
+    }
 }
 
 #[test]

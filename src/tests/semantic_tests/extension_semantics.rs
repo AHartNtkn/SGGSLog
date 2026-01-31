@@ -106,6 +106,33 @@ fn extension_uses_simultaneous_unification_of_i_true_literals() {
 }
 
 #[test]
+fn extension_does_not_over_instantiate_free_vars() {
+    // Variables not constrained by side premises should remain variables (MGU, not a ground instance).
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::neg("P", vec![Term::var("X")]),
+        Literal::pos("R", vec![Term::var("Y")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) | ExtensionResult::Critical { clause: cc, .. } => {
+            let lit = cc.selected_literal();
+            assert_eq!(lit.atom.predicate, "R");
+            match &lit.atom.args[0] {
+                Term::Var(_) => {}
+                _ => panic!("unconstrained variable should not be over-instantiated"),
+            }
+        }
+        other => panic!("Expected extension with unconstrained variable, got {:?}", other),
+    }
+}
+
+#[test]
 fn extension_inherits_constraints_from_side_premises() {
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     let constrained = ConstrainedClause::with_constraint(

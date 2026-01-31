@@ -97,6 +97,40 @@ fn fairness_reports_deletion_applicable_when_prefix_satisfies_clause() {
     assert_next_is_applicable(&trail, &theory);
 }
 
+#[test]
+fn fairness_excludes_extension_when_conflict_exists() {
+    // When a conflict clause exists, conflict-solving or deletion must take precedence.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
+    trail.push(unit(Literal::neg("P", vec![Term::constant("a")])));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
+    let applicable = applicable_inferences(&trail, &theory);
+    assert!(
+        !applicable.contains(&InferenceRule::Extension),
+        "extension should not be applicable in presence of a conflict"
+    );
+}
+
+#[test]
+fn fairness_excludes_trivial_splitting() {
+    // Trivial splitting (singleton partition) must not be scheduled.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(unit(Literal::pos("P", vec![Term::var("X")])));
+    trail.push(unit(Literal::pos("P", vec![Term::var("Y")]))); // alpha-equivalent, trivial split
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos("Q", vec![])])]);
+    let applicable = applicable_inferences(&trail, &theory);
+    assert!(
+        !applicable.contains(&InferenceRule::Splitting),
+        "trivial splitting should not be applicable"
+    );
+    assert!(
+        applicable.contains(&InferenceRule::Deletion),
+        "deletion should be applicable for a disposable duplicate"
+    );
+}
+
 /// "An inference is applied whenever ⊥ ∉ Γ and I[Γ ] ⊭ S."
 /// (SGGSdpFOL, fairness paragraph)
 ///

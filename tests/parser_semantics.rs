@@ -284,3 +284,18 @@ fn test_parse_error_includes_position() {
     let err = parse_file("p ∧").expect_err("expected parse error");
     assert!(!err.message.is_empty());
 }
+
+#[test]
+fn test_directive_parsing_unknown_setting() {
+    let stmts = parse_file(":set foo bar").expect("parse_file failed");
+    assert_eq!(stmts.len(), 1);
+    assert_eq!(
+        stmts[0],
+        Statement::Directive(sggslog::parser::Directive::Set(
+            sggslog::parser::Setting::Unknown {
+                key: "foo".to_string(),
+                value: "bar".to_string()
+            }
+        ))
+    );
+}

@@ -69,3 +69,46 @@ fn deletion_removes_disposable_clause() {
         .iter()
         .any(|c| c.selected_literal() == c2.selected_literal()));
 }
+
+#[test]
+fn disposable_when_constraint_false() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let clause = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("x")])]),
+        Constraint::False,
+        0,
+    );
+    trail.push(clause);
+    assert!(
+        is_disposable(&trail.clauses()[0], &trail),
+        "unsatisfiable constraint should make clause disposable"
+    );
+}
+
+#[test]
+fn deletion_removes_all_disposable_clauses() {
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    let c1 = unit(Literal::pos("P", vec![Term::var("x")]));
+    let c2 = unit(Literal::neg("Q", vec![Term::var("x")]));
+    let c3 = unit(Literal::pos("P", vec![Term::var("x")])); // disposable
+    let c4 = ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("R", vec![Term::var("y")])]),
+        Constraint::False,
+        0,
+    ); // disposable
+    trail.push(c1.clone());
+    trail.push(c2.clone());
+    trail.push(c3);
+    trail.push(c4);
+
+    sggs_deletion(&mut trail);
+    assert_eq!(trail.len(), 2, "all disposable clauses should be removed");
+    assert!(trail
+        .clauses()
+        .iter()
+        .any(|c| c.selected_literal() == c1.selected_literal()));
+    assert!(trail
+        .clauses()
+        .iter()
+        .any(|c| c.selected_literal() == c2.selected_literal()));
+}

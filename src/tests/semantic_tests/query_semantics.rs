@@ -295,6 +295,33 @@ fn query_stream_dedups_duplicate_facts() {
 }
 
 #[test]
+fn query_stream_dedups_alpha_equivalent_clauses() {
+    // Two alpha-equivalent clauses should not yield duplicate answers.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("X")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("Y")],
+    )]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+    match stream.next() {
+        QueryResult::Answer(ans) => {
+            assert!(ans.domain().is_empty(), "ground answer should be empty");
+        }
+        other => panic!("Expected answer, got {:?}", other),
+    }
+    match stream.next() {
+        QueryResult::Exhausted => {}
+        other => panic!("Expected exhausted stream, got {:?}", other),
+    }
+}
+
+#[test]
 fn negative_literal_query_no_answers() {
     let mut theory = crate::theory::Theory::new();
     theory.add_clause(Clause::new(vec![Literal::pos(

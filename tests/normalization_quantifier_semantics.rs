@@ -41,25 +41,11 @@ fn test_skolemization_respects_shadowing_scope() {
     let clause = find_clause_with_predicate(&clauses, "p");
     let lit = first_literal_with_predicate(&clause, "p");
     match &lit.atom.args[0] {
-        Term::App(_, args) if !args.is_empty() => {
-            assert_eq!(
-                args.len(),
-                1,
-                "Skolem function should depend on one universal"
-            );
-            assert!(
-                matches!(&args[0], Term::Var(_)),
-                "argument should be a variable"
-            );
-        }
         Term::App(sym, args) if sym.arity == 0 && args.is_empty() => {}
-        _ => panic!("expected Skolem function application"),
+        _ => panic!("expected Skolem constant: inner ∃X is not in scope of any universal"),
     }
     let vars = clause.variables().len();
-    assert!(
-        vars == 0 || vars == 1,
-        "skolemization may drop unused universals or keep dependency"
-    );
+    assert_eq!(vars, 0, "outer ∀X is unused after shadowing");
 }
 
 #[test]

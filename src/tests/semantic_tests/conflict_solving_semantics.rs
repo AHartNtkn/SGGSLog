@@ -58,6 +58,9 @@ fn conflict_solving_chain_reaches_empty_clause() {
         ResolutionResult::EmptyClause => {
             panic!("Expected non-empty conflict-preserving resolvent");
         }
+        ResolutionResult::Inapplicable => {
+            panic!("Resolution should be applicable");
+        }
     };
     assert_eq!(cc.clause.literals, vec![Literal::neg("P", vec![a.clone()])]);
     assert!(cc.is_conflict(&trail.interpretation()));
@@ -93,6 +96,9 @@ fn resolution_can_return_conflict_resolvent() {
         }
         ResolutionResult::EmptyClause => {
             panic!("Expected non-empty conflict clause");
+        }
+        ResolutionResult::Inapplicable => {
+            panic!("Resolution should be applicable");
         }
     }
 }
@@ -165,6 +171,9 @@ fn conflict_solving_chain_with_left_split() {
         ResolutionResult::EmptyClause => {}
         ResolutionResult::Resolvent(cc) => {
             assert!(cc.is_conflict(&trail2.interpretation()));
+        }
+        ResolutionResult::Inapplicable => {
+            panic!("Resolution should be applicable");
         }
     }
 }

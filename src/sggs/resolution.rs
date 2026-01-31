@@ -9,6 +9,8 @@ pub enum ResolutionResult {
     EmptyClause,
     /// Resolution step produced new clause
     Resolvent(ConstrainedClause),
+    /// Resolution not applicable due to unmet preconditions
+    Inapplicable,
 }
 
 /// SGGS-Resolution: resolve conflict clause with justifications.
@@ -56,6 +58,7 @@ mod tests {
                 );
             }
             ResolutionResult::EmptyClause => panic!("Expected non-empty resolvent"),
+            ResolutionResult::Inapplicable => panic!("Resolution should be applicable"),
         }
     }
 
@@ -75,7 +78,8 @@ mod tests {
 
         match sggs_resolution(&conflict_clause, &trail) {
             ResolutionResult::EmptyClause => {}
-            other => panic!("Expected empty clause, got {:?}", other),
+            ResolutionResult::Resolvent(_) => panic!("Expected empty clause"),
+            ResolutionResult::Inapplicable => panic!("Resolution should be applicable"),
         }
     }
 }
