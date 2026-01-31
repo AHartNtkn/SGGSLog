@@ -11,20 +11,20 @@ use crate::syntax::{Atom, Formula};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn term_uses_only_symbols(
-    term: &Term,
-    allowed_consts: &std::collections::HashSet<String>,
-    allowed_funs: &std::collections::HashSet<String>,
-) -> bool {
+fn term_uses_only_symbols(term: &Term, allowed: &crate::syntax::Signature) -> bool {
     match term {
         Term::Var(_) => true,
-        Term::Const(c) => allowed_consts.contains(c.name()),
+        Term::Const(c) => allowed.contains_constant_name(c.name()),
         Term::App(sym, args) => {
-            if !allowed_funs.contains(&sym.name) {
+            if sym.arity == 0 {
+                if !allowed.allows_zero_ary_function(&sym.name) {
+                    return false;
+                }
+            } else if !allowed.contains_function(&sym.name, sym.arity) {
                 return false;
             }
             args.iter()
-                .all(|a| term_uses_only_symbols(a, allowed_consts, allowed_funs))
+                .all(|a| term_uses_only_symbols(a, allowed))
         }
     }
 }
@@ -148,20 +148,24 @@ fn session_dedups_alpha_equivalent_sources_in_answers() {
 #[test]
 fn session_applies_set_directive() {
     let mut session = Session::new();
-    let stmt = Statement::Directive(Directive::Set("max_steps".to_string(), "10".to_string()));
+    let stmt = Statement::Directive(Directive::Set(
+        crate::parser::Setting::TimeoutMs(10),
+    ));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
     assert!(matches!(result, ExecResult::DirectiveApplied(_)));
-    assert_eq!(session.config().max_steps, Some(10));
+    assert_eq!(session.config().timeout_ms, Some(10));
 }
 
 #[test]
 fn session_sets_initial_interpretation() {
     let mut session = Session::new();
     let stmt = Statement::Directive(Directive::Set(
-        "initial_interp".to_string(),
-        "positive".to_string(),
+        crate::parser::Setting::Unknown {
+            key: "initial_interp".to_string(),
+            value: "positive".to_string(),
+        },
     ));
     let err = session
         .execute_statement(stmt)
@@ -177,8 +181,7 @@ fn session_sets_initial_interpretation() {
 fn session_sets_projection_policy() {
     let mut session = Session::new();
     let stmt = Statement::Directive(Directive::Set(
-        "projection".to_string(),
-        "allow_internal".to_string(),
+        crate::parser::Setting::Projection(crate::parser::ProjectionSetting::AllowInternal),
     ));
     let result = session
         .execute_statement(stmt)
@@ -310,7 +313,7 @@ fn session_query_does_not_expose_internal_symbols() {
     loop {
         match qr {
             crate::sggs::QueryResult::Answer(ans) => answers.push(ans),
-            crate::sggs::QueryResult::NoAnswers | crate::sggs::QueryResult::Exhausted => break,
+            crate::sggs::QueryResult::Exhausted => break,
             other => panic!("expected answer or exhaustion, got {:?}", other),
         }
         let next = session
@@ -323,16 +326,22 @@ fn session_query_does_not_expose_internal_symbols() {
     }
 
     // Only symbols from the original input (predicate p and constant a) are allowed.
-    let mut allowed_consts = std::collections::HashSet::new();
-    allowed_consts.insert("a".to_string());
-    // Treat constants as 0-ary functions to accept either encoding.
-    let allowed_funs = allowed_consts.clone();
+    let mut allowed_sig = crate::syntax::Signature::empty();
+    allowed_sig.constants.insert(crate::syntax::ConstSig {
+        name: "a".to_string(),
+        sort: None,
+    });
+    allowed_sig.functions.insert(crate::syntax::FnSig {
+        name: "a".to_string(),
+        arity: 0,
+        result_sort: None,
+    });
 
     for s in &answers {
         for v in s.domain() {
             let t = s.lookup(v).expect("bound var");
             assert!(
-                term_uses_only_symbols(t, &allowed_consts, &allowed_funs),
+                term_uses_only_symbols(t, &allowed_sig),
                 "answer contains non-user symbol: {:?}",
                 t
             );
@@ -367,7 +376,7 @@ fn session_query_without_projectable_witness_returns_no_answers() {
         .execute_statement(stmt)
         .expect("execute_statement failed");
     match result {
-        ExecResult::QueryResult(crate::sggs::QueryResult::NoAnswers) => {}
+        ExecResult::QueryResult(crate::sggs::QueryResult::Exhausted) => {}
         ExecResult::QueryResult(crate::sggs::QueryResult::Answer(ans)) => {
             panic!(
                 "expected no answers without projectable witness, got {:?}",
@@ -385,8 +394,7 @@ fn session_query_allows_internal_symbols_when_enabled() {
     let mut session = Session::new();
     let _ = session
         .execute_statement(Statement::Directive(Directive::Set(
-            "projection".to_string(),
-            "allow_internal".to_string(),
+            crate::parser::Setting::Projection(crate::parser::ProjectionSetting::AllowInternal),
         )))
         .expect("set projection");
 
@@ -412,12 +420,10 @@ fn session_query_allows_internal_symbols_when_enabled() {
 
     // User signature has no constants, so any bound term is internal.
     let sig = session.user_signature();
-    let allowed_consts = sig.constants.clone();
-    let allowed_funs = sig.functions.clone();
     assert!(
         answer.domain().iter().any(|v| {
             let t = answer.lookup(v).expect("bound var");
-            !term_uses_only_symbols(t, &allowed_consts, &allowed_funs)
+            !term_uses_only_symbols(t, sig.signature())
         }),
         "allow_internal should permit answers with non-user symbols"
     );
@@ -449,11 +455,11 @@ fn session_tracks_user_signature_from_input() {
         .expect("load_file failed");
 
     let sig = session.user_signature();
-    assert!(sig.predicates.contains("p"));
-    assert!(sig.predicates.contains("q"));
-    assert!(sig.predicates.contains("r"));
-    assert!(sig.functions.contains("f"));
-    assert!(sig.constants.contains("a"));
+    assert!(sig.contains_predicate_name("p"));
+    assert!(sig.contains_predicate_name("q"));
+    assert!(sig.contains_predicate_name("r"));
+    assert!(sig.contains_function_name("f"));
+    assert!(sig.contains_constant_name("a"));
 
     let _ = fs::remove_file(&path);
 }

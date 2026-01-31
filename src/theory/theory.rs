@@ -332,9 +332,9 @@ mod tests {
             vec![Term::app("f", vec![Term::constant("a")])],
         )]));
         let sig = theory.signature();
-        assert!(sig.predicates.contains("P"));
-        assert!(sig.functions.contains("f"));
-        assert!(sig.constants.contains("a"));
+        assert!(sig.contains_predicate_name("P"));
+        assert!(sig.contains_function_name("f"));
+        assert!(sig.contains_constant_name("a"));
     }
 
     #[test]

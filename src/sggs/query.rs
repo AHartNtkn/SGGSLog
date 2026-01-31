@@ -3,8 +3,7 @@
 use std::collections::HashSet;
 
 use super::DerivationConfig;
-use crate::syntax::Signature;
-use crate::syntax::{Clause, Literal, Var};
+use crate::syntax::{Clause, Literal, UserSignature, Var};
 use crate::theory::Theory;
 use crate::unify::Substitution;
 
@@ -45,12 +44,10 @@ impl Query {
 pub enum QueryResult {
     /// A single answer (substitution) was found.
     Answer(Substitution),
-    /// No answers exist for this query (first result).
-    NoAnswers,
     /// No more answers remain (query exhausted).
     Exhausted,
-    /// Resource limit reached before completion.
-    ResourceLimit,
+    /// Timeout reached before completion.
+    Timeout,
 }
 
 /// Policy for projecting internal symbols from user-visible answers.
@@ -68,7 +65,7 @@ pub struct QueryStream {
     theory: Theory,
     query: Query,
     config: DerivationConfig,
-    user_signature: Option<Signature>,
+    user_signature: Option<UserSignature>,
     policy: ProjectionPolicy,
     seen_answer: bool,
     exhausted: bool,
@@ -79,7 +76,7 @@ impl QueryStream {
         theory: Theory,
         query: Query,
         config: DerivationConfig,
-        user_signature: Option<Signature>,
+        user_signature: Option<UserSignature>,
         policy: ProjectionPolicy,
     ) -> Self {
         QueryStream {
@@ -121,7 +118,7 @@ pub fn answer_query_projected(
     theory: &Theory,
     query: &Query,
     config: DerivationConfig,
-    user_signature: &Signature,
+    user_signature: &UserSignature,
     policy: ProjectionPolicy,
 ) -> QueryStream {
     QueryStream::new(

@@ -9,17 +9,30 @@ use super::*;
 use crate::sggs::{derive, DerivationConfig, DerivationResult, InitialInterpretation};
 use crate::syntax::{Atom, AtomCmp, AtomOrder};
 use std::collections::HashSet;
+use std::sync::mpsc;
+use std::time::Duration;
 
 fn assert_terminates(theory: &crate::theory::Theory) {
-    let config = DerivationConfig {
-        max_steps: Some(200),
-        initial_interp: InitialInterpretation::AllNegative,
-    };
-    let result = derive(theory, config);
-    assert!(
-        !matches!(result, DerivationResult::ResourceLimit),
-        "derivation should terminate for SGGS-decidable fragments"
-    );
+    let (tx, rx) = mpsc::channel();
+    let theory = theory.clone();
+    std::thread::spawn(move || {
+        let config = DerivationConfig {
+            timeout_ms: None,
+            initial_interp: InitialInterpretation::AllNegative,
+        };
+        let result = derive(&theory, config);
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_secs(1)) {
+        Ok(result) => {
+            assert!(
+                !matches!(result, DerivationResult::Timeout),
+                "derivation should terminate for SGGS-decidable fragments"
+            );
+        }
+        Err(_) => panic!("derivation timed out (1s)"),
+    }
 }
 
 struct TrivialOrder;

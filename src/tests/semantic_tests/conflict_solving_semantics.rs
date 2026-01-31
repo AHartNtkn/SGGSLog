@@ -61,10 +61,13 @@ fn conflict_solving_chain_reaches_empty_clause() {
     let conflict_clause = trail.clauses()[moved_idx].clone();
     let res1 = sggs_resolution(&conflict_clause, &trail);
     let cc = match res1 {
-        ResolutionResult::ConflictClause(cc) => cc,
-        other => panic!("Expected conflict clause resolvent, got {:?}", other),
+        ResolutionResult::Resolvent(cc) => cc,
+        ResolutionResult::EmptyClause => {
+            panic!("Expected non-empty conflict-preserving resolvent");
+        }
     };
     assert_eq!(cc.clause.literals, vec![Literal::neg("P", vec![a.clone()])]);
+    assert!(cc.is_conflict(&trail.interpretation()));
 
     // Resolve ¬P(a) with P(a) to derive the empty clause.
     let res2 = sggs_resolution(&cc, &trail);
@@ -72,8 +75,9 @@ fn conflict_solving_chain_reaches_empty_clause() {
 }
 
 #[test]
-fn resolution_can_return_conflict_clause() {
-    // If resolution yields an I-all-true clause, it should return ConflictClause.
+fn resolution_can_return_conflict_resolvent() {
+    // If resolution yields a conflict clause, it should return a resolvent
+    // that is still a conflict under the trail interpretation.
     let a = Term::constant("a");
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(unit(Literal::pos("P", vec![a.clone()])));
@@ -90,10 +94,13 @@ fn resolution_can_return_conflict_clause() {
     trail.push(conflict.clone());
 
     match sggs_resolution(&conflict, &trail) {
-        ResolutionResult::ConflictClause(cc) => {
+        ResolutionResult::Resolvent(cc) => {
             assert!(cc.clause.literals.iter().all(|l| !l.positive));
+            assert!(cc.is_conflict(&trail.interpretation()));
         }
-        other => panic!("Expected ConflictClause, got {:?}", other),
+        ResolutionResult::EmptyClause => {
+            panic!("Expected non-empty conflict clause");
+        }
     }
 }
 
@@ -161,11 +168,10 @@ fn conflict_solving_chain_with_left_split() {
     trail2.push(conflict.clone());
 
     let res = sggs_resolution(&conflict, &trail2);
-    assert!(
-        matches!(
-            res,
-            ResolutionResult::EmptyClause | ResolutionResult::ConflictClause(_)
-        ),
-        "left split should enable conflict solving on the isolated intersection"
-    );
+    match res {
+        ResolutionResult::EmptyClause => {}
+        ResolutionResult::Resolvent(cc) => {
+            assert!(cc.is_conflict(&trail2.interpretation()));
+        }
+    }
 }

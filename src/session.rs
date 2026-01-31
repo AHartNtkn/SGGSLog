@@ -1,12 +1,12 @@
 //! Session: end-to-end API for loading theories and answering queries.
 
 use crate::normalize::{clausify_statement, clausify_statements};
-use crate::parser::{parse_file, Directive, Statement};
+use crate::parser::{parse_file, Directive, ProjectionSetting, Setting, Statement};
 use crate::sggs::{
     answer_query, answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult,
     QueryStream,
 };
-use crate::syntax::{Literal, Signature};
+use crate::syntax::{Literal, UserSignature};
 use crate::theory::Theory;
 
 /// Result of executing a statement.
@@ -21,7 +21,7 @@ pub enum ExecResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DirectiveResult {
     Loaded { path: String, clauses: usize },
-    Set { key: String, value: String },
+    Set(Setting),
 }
 
 /// Session error.
@@ -42,7 +42,7 @@ impl std::error::Error for SessionError {}
 pub struct Session {
     theory: Theory,
     config: DerivationConfig,
-    user_signature: Signature,
+    user_signature: UserSignature,
     projection_policy: ProjectionPolicy,
     active_query: Option<QueryStream>,
 }
@@ -82,12 +82,8 @@ impl Session {
     }
 
     /// Update the configuration from a key/value pair.
-    pub fn set_option(
-        &mut self,
-        _key: &str,
-        _value: &str,
-    ) -> Result<DirectiveResult, SessionError> {
-        todo!("Session::set_option implementation")
+    pub fn apply_setting(&mut self, _setting: Setting) -> Result<DirectiveResult, SessionError> {
+        todo!("Session::apply_setting implementation")
     }
 
     /// Access the current theory.
@@ -101,7 +97,7 @@ impl Session {
     }
 
     /// Signature of user-provided symbols (pre-normalization).
-    pub fn user_signature(&self) -> &Signature {
+    pub fn user_signature(&self) -> &UserSignature {
         &self.user_signature
     }
 

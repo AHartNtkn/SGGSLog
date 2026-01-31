@@ -88,7 +88,7 @@ fn ground_query_not_entailed_has_no_answers() {
     let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
     match stream.next() {
-        QueryResult::NoAnswers => {}
+        QueryResult::Exhausted => {}
         other => panic!("Expected no answers, got {:?}", other),
     }
 }
@@ -223,7 +223,7 @@ fn negative_literal_query_no_answers() {
     let query = Query::new(vec![Literal::neg("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
     match stream.next() {
-        QueryResult::NoAnswers => {}
+        QueryResult::Exhausted => {}
         other => panic!("Expected no answers, got {:?}", other),
     }
 }
@@ -296,9 +296,8 @@ fn negative_only_query_streams_over_user_signature() {
     )]));
 
     let query = Query::new(vec![Literal::neg("p", vec![Term::var("X")])]);
-    let mut user_sig = crate::syntax::Signature::empty();
-    user_sig.constants.insert("a".to_string());
-    user_sig.functions.insert("a".to_string());
+    let mut user_sig = crate::syntax::UserSignature::empty();
+    user_sig.insert_constant("a", None);
 
     let mut stream = answer_query_projected(
         &theory,
@@ -321,13 +320,13 @@ fn query_respects_resource_limit() {
     let theory = crate::theory::Theory::new();
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
     let config = crate::sggs::DerivationConfig {
-        max_steps: Some(0),
+        timeout_ms: Some(0),
         initial_interp: crate::sggs::InitialInterpretation::AllNegative,
     };
     let mut stream = answer_query(&theory, &query, config);
     match stream.next() {
-        QueryResult::ResourceLimit => {}
-        other => panic!("Expected resource limit, got {:?}", other),
+        QueryResult::Timeout => {}
+        other => panic!("Expected timeout, got {:?}", other),
     }
 }
 
@@ -342,7 +341,7 @@ fn projected_query_filters_internal_symbols() {
     )]));
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
-    let user_sig = crate::syntax::Signature::empty();
+    let user_sig = crate::syntax::UserSignature::empty();
 
     let mut stream = answer_query_projected(
         &theory,
@@ -351,7 +350,7 @@ fn projected_query_filters_internal_symbols() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    assert!(matches!(stream.next(), QueryResult::NoAnswers));
+    assert!(matches!(stream.next(), QueryResult::Exhausted));
 }
 
 #[test]
@@ -368,9 +367,8 @@ fn projected_query_keeps_user_witnesses_and_drops_internal() {
     )]));
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
-    let mut user_sig = crate::syntax::Signature::empty();
-    user_sig.constants.insert("a".to_string());
-    user_sig.functions.insert("a".to_string());
+    let mut user_sig = crate::syntax::UserSignature::empty();
+    user_sig.insert_constant("a", None);
 
     let mut stream = answer_query_projected(
         &theory,
@@ -390,8 +388,8 @@ fn projected_query_keeps_user_witnesses_and_drops_internal() {
         let t = ans.lookup(v).expect("bound var");
         match t {
             Term::Var(_) => true,
-            Term::Const(c) => user_sig.constants.contains(c.name()),
-            Term::App(sym, _) => user_sig.functions.contains(&sym.name),
+            Term::Const(c) => user_sig.contains_constant_name(c.name()),
+            Term::App(sym, _) => user_sig.contains_function(&sym.name, sym.arity),
         }
     }));
     match stream.next() {
@@ -410,7 +408,7 @@ fn projected_query_allows_internal_symbols_when_enabled() {
     )]));
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]);
-    let user_sig = crate::syntax::Signature::empty();
+    let user_sig = crate::syntax::UserSignature::empty();
 
     let mut stream = answer_query_projected(
         &theory,
@@ -427,8 +425,8 @@ fn projected_query_allows_internal_symbols_when_enabled() {
         let t = ans.lookup(v).expect("bound var");
         match t {
             Term::Var(_) => false,
-            Term::Const(c) => !user_sig.constants.contains(c.name()),
-            Term::App(sym, _) => !user_sig.functions.contains(&sym.name),
+            Term::Const(c) => !user_sig.contains_constant_name(c.name()),
+            Term::App(sym, _) => !user_sig.contains_function(&sym.name, sym.arity),
         }
     }));
     match stream.next() {

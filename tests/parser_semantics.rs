@@ -182,7 +182,8 @@ q
 
 #[test]
 fn test_directive_parsing_load_and_set() {
-    let stmts = parse_file(":load \"file.sggs\"\n:set max_steps 10").expect("parse_file failed");
+    let stmts =
+        parse_file(":load \"file.sggs\"\n:set timeout_ms 10").expect("parse_file failed");
     assert_eq!(stmts.len(), 2);
     assert_eq!(
         stmts[0],
@@ -191,8 +192,7 @@ fn test_directive_parsing_load_and_set() {
     assert_eq!(
         stmts[1],
         Statement::Directive(sggslog::parser::Directive::Set(
-            "max_steps".to_string(),
-            "10".to_string()
+            sggslog::parser::Setting::TimeoutMs(10)
         ))
     );
 }

@@ -22,4 +22,4 @@ Projection of answers is part of the external API. By default, only user-provide
 
 Negative-only queries (variables appearing only in negated literals) are allowed. When projection is `only_user_symbols`, such queries stream answers over the user signature (and may be infinite).
 
-Directives include `:load "path"`, `:set key value`, and `:next` (to retrieve the next answer to the most recent query). Supported keys include `max_steps` and `projection` (values: `only_user_symbols` or `allow_internal`). `initial_interp` is not supported for end users.
+Directives include `:load "path"`, `:set key value`, and `:next` (to retrieve the next answer to the most recent query). Supported keys include `timeout_ms` and `projection` (values: `only_user_symbols` or `allow_internal`). `initial_interp` is not supported for end users.

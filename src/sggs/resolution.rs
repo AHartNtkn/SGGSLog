@@ -7,8 +7,6 @@ use super::{ConstrainedClause, Trail};
 pub enum ResolutionResult {
     /// Derived empty clause (theory is unsatisfiable)
     EmptyClause,
-    /// Derived I-all-true conflict clause
-    ConflictClause(ConstrainedClause),
     /// Resolution step produced new clause
     Resolvent(ConstrainedClause),
 }
@@ -57,7 +55,7 @@ mod tests {
                     vec![Literal::pos("Q", vec![Term::constant("a")])]
                 );
             }
-            other => panic!("Expected resolvent, got {:?}", other),
+            ResolutionResult::EmptyClause => panic!("Expected non-empty resolvent"),
         }
     }
 

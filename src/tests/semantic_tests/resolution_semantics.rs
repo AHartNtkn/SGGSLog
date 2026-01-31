@@ -33,11 +33,13 @@ fn resolution_preserves_conflict() {
     );
     trail.push(conflict.clone());
 
+    let interp = trail.interpretation();
     match sggs_resolution(&conflict, &trail) {
         ResolutionResult::Resolvent(res) => {
-            let interp = trail.interpretation();
             assert!(res.is_conflict(&interp));
         }
-        other => panic!("Expected resolvent, got {:?}", other),
+        ResolutionResult::EmptyClause => {
+            panic!("Expected non-empty conflict-preserving resolvent");
+        }
     }
 }

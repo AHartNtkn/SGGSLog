@@ -12,8 +12,8 @@ pub enum DerivationResult {
     Unsatisfiable,
     /// Found model (theory is satisfiable)
     Satisfiable(Model),
-    /// Resource limit reached
-    ResourceLimit,
+    /// Timeout reached
+    Timeout,
 }
 
 /// A model witnessing satisfiability.
@@ -42,8 +42,8 @@ pub struct DerivationState {
 /// Configuration for SGGS derivation.
 #[derive(Debug, Clone)]
 pub struct DerivationConfig {
-    /// Maximum number of derivation steps (None for unlimited)
-    pub max_steps: Option<usize>,
+    /// Timeout in milliseconds (None for unlimited)
+    pub timeout_ms: Option<u64>,
     /// The initial interpretation to use
     pub initial_interp: InitialInterpretation,
 }
@@ -51,7 +51,7 @@ pub struct DerivationConfig {
 impl Default for DerivationConfig {
     fn default() -> Self {
         DerivationConfig {
-            max_steps: None,
+            timeout_ms: None,
             initial_interp: InitialInterpretation::default(),
         }
     }
@@ -219,26 +219,29 @@ mod tests {
     }
 
     #[test]
-    fn derive_with_trace_respects_max_steps_zero() {
+    fn derive_with_trace_respects_timeout_zero() {
         let theory = Theory::new();
         let config = DerivationConfig {
-            max_steps: Some(0),
+            timeout_ms: Some(0),
             initial_interp: InitialInterpretation::AllNegative,
         };
         let (result, trace) = derive_with_trace(&theory, config);
-        assert!(matches!(result, DerivationResult::ResourceLimit));
-        assert!(trace.is_empty(), "no steps allowed when max_steps=0");
+        assert!(matches!(result, DerivationResult::Timeout));
+        assert!(trace.is_empty(), "no steps allowed when timeout_ms=0");
     }
 
     #[test]
     fn derive_with_trace_length_limited() {
         let theory = Theory::new();
         let config = DerivationConfig {
-            max_steps: Some(1),
+            timeout_ms: Some(1),
             initial_interp: InitialInterpretation::AllNegative,
         };
         let (_result, trace) = derive_with_trace(&theory, config);
-        assert!(trace.len() <= 1, "trace must respect max_steps");
+        assert!(
+            trace.len() <= 1,
+            "trace should be short under a tiny timeout"
+        );
     }
 
     #[test]
@@ -261,7 +264,7 @@ mod tests {
     fn resolution_steps_do_not_increase_trail_length() {
         let theory = Theory::new();
         let config = DerivationConfig {
-            max_steps: Some(10),
+            timeout_ms: Some(10),
             initial_interp: InitialInterpretation::AllNegative,
         };
         let (_result, trace) = derive_with_trace(&theory, config);
@@ -414,17 +417,17 @@ mod tests {
     }
 
     #[test]
-    fn derive_with_trace_respects_max_steps() {
+    fn derive_with_trace_respects_timeout() {
         let theory = Theory::new();
         let config = DerivationConfig {
-            max_steps: Some(0),
+            timeout_ms: Some(0),
             initial_interp: InitialInterpretation::AllNegative,
         };
         let (result, trace) = derive_with_trace(&theory, config);
         assert!(
-            matches!(result, DerivationResult::ResourceLimit),
-            "max_steps=0 should immediately hit resource limit"
+            matches!(result, DerivationResult::Timeout),
+            "timeout_ms=0 should immediately hit timeout"
         );
-        assert!(trace.is_empty(), "trace should be empty with max_steps=0");
+        assert!(trace.is_empty(), "trace should be empty with timeout_ms=0");
     }
 }

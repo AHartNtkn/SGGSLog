@@ -89,9 +89,9 @@ mod tests {
     #[test]
     fn test_repl_process_line_directive() {
         let mut repl = Repl::new();
-        let r = repl.process_line(":set max_steps 10").unwrap();
+        let r = repl.process_line(":set timeout_ms 10").unwrap();
         assert!(
-            r.contains("max_steps") && r.contains("10"),
+            r.contains("timeout_ms") && r.contains("10"),
             "expected directive acknowledgement, got {}",
             r
         );

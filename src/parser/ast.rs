@@ -15,13 +15,28 @@ pub enum Statement {
     Directive(Directive),
 }
 
+/// A typed configuration setting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Setting {
+    TimeoutMs(u64),
+    Projection(ProjectionSetting),
+    Unknown { key: String, value: String },
+}
+
+/// Projection modes for user-visible answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectionSetting {
+    OnlyUserSymbols,
+    AllowInternal,
+}
+
 /// A directive in SGGSLog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Directive {
     /// Load a file
     Load(String),
     /// Set a configuration option
-    Set(String, String),
+    Set(Setting),
     /// Request the next answer in the current query stream
     Next,
 }

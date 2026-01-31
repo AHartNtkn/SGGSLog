@@ -121,11 +121,11 @@ fn proof_confluence_unsatisfiable() {
         Clause::new(vec![Literal::neg("p", vec![])]),
     ]);
     let config_positive = DerivationConfig {
-        max_steps: Some(100),
+        timeout_ms: Some(1000),
         initial_interp: InitialInterpretation::AllPositive,
     };
     let config_negative = DerivationConfig {
-        max_steps: Some(100),
+        timeout_ms: Some(1000),
         initial_interp: InitialInterpretation::AllNegative,
     };
     let result_pos = derive(&theory, config_positive);
@@ -179,8 +179,8 @@ fn satisfiable_datalog() {
                 "[BW20] Theorem 2: Model should contain path(a,c) by transitivity"
             );
         }
-        DerivationResult::ResourceLimit => {
-            panic!("[BW20] Stratified/Datalog should terminate without resource limit");
+        DerivationResult::Timeout => {
+            panic!("[BW20] Stratified/Datalog should terminate without timeout");
         }
         DerivationResult::Unsatisfiable => {
             panic!("[BW20] Datalog program should be satisfiable");

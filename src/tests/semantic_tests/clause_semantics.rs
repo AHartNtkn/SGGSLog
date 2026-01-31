@@ -1,4 +1,5 @@
 use super::*;
+use crate::sggs::{derive, DerivationConfig, DerivationResult};
 
 // =============================================================================
 // CLAUSE SEMANTIC PROPERTIES
@@ -20,7 +21,12 @@ fn empty_clause_represents_false() {
     //  Empty clause = contradiction
     let empty = Clause::empty();
     assert!(empty.is_empty());
-    // An empty disjunction is false
+    let theory = theory_from_clauses(vec![empty]);
+    let result = derive(&theory, DerivationConfig::default());
+    assert!(
+        matches!(result, DerivationResult::Unsatisfiable),
+        "theory containing empty clause must be unsatisfiable"
+    );
 }
 
 // -------------------------------------------------------------------------
