@@ -269,6 +269,50 @@ fn interpretation_uses_initial_for_unassigned_literals() {
     assert!(interp_pos.is_uniformly_false(&neg));
 }
 
+#[test]
+fn uniformly_true_i_true_literal_requires_all_instances() {
+    // Uniform falsity (BP16a): "a literal is uniformly false in an interpretation,
+    // if all its ground instances are false in that interpretation."
+    // Therefore a literal is uniformly true only if all its ground instances are true.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    trail.push(unit(Literal::pos("P", vec![Term::constant("a")])));
+    let interp = trail.interpretation();
+
+    // Under I-, ¬P(X) is I-true, but ¬P(a) is false in I[Γ] because P(a) is selected.
+    // Thus ¬P(X) is NOT uniformly true.
+    let neg_x = Literal::neg("P", vec![Term::var("X")]);
+    assert!(
+        !interp.is_uniformly_true(&neg_x),
+        "I-true literal with a false instance is not uniformly true"
+    );
+
+    // A ground instance not falsified by the trail remains uniformly true.
+    let neg_b = Literal::neg("P", vec![Term::constant("b")]);
+    assert!(interp.is_uniformly_true(&neg_b));
+}
+
+#[test]
+fn uniformly_true_i_false_non_ground_requires_all_instances_in_partial() {
+    // I^p(Γ) is built from proper constrained ground instances:
+    // [BW20] "I^p(Γ)=I^p(Γ|n−1) ∪ pcgi(An ⊲ Ln, Γ)" and
+    // "I^p(Γ) is completed into I[Γ] by consulting I".
+    // If a ground instance of an I-false literal is falsified by the partial interpretation,
+    // the non-ground literal cannot be uniformly true.
+    let a = Term::constant("a");
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // Add I-true selected literal ¬P(a): this puts ¬P(a) in I^p(Γ).
+    trail.push(unit(Literal::neg("P", vec![a.clone()])));
+    // Add I-false selected literal P(X): outside dp(Γ) because it intersects ¬P(a).
+    trail.push(unit(Literal::pos("P", vec![Term::var("X")])));
+
+    let interp = trail.interpretation();
+    let p_x = Literal::pos("P", vec![Term::var("X")]);
+    assert!(
+        !interp.is_uniformly_true(&p_x),
+        "I-false non-ground literal is not uniformly true when some instance is false"
+    );
+}
+
 // -------------------------------------------------------------------------
 // Property: I-false selected literals are enumerated
 //
