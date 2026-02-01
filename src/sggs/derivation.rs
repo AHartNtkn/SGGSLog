@@ -508,7 +508,15 @@ impl DerivationState {
     }
 
     /// Perform one inference step.
+    ///
+    /// Returns `Some(step)` if an inference was applied, `None` if the derivation
+    /// is complete (check `result()` for the outcome).
     pub fn step(&mut self) -> Option<DerivationStep> {
+        // If already done, return None immediately
+        if self.done.is_some() {
+            return None;
+        }
+
         // Check for timeout
         if self.is_timed_out() {
             self.done = Some(DerivationResult::Timeout);
@@ -1152,5 +1160,23 @@ mod tests {
             "timeout_ms=0 should immediately hit timeout"
         );
         assert!(trace.is_empty(), "trace should be empty with timeout_ms=0");
+    }
+
+    #[test]
+    fn derivation_state_step_returns_none_when_done() {
+        // Source: spec.md (timeout_ms=0 times out immediately).
+        let theory = Theory::new();
+        let config = DerivationConfig {
+            timeout_ms: Some(0),
+            initial_interp: InitialInterpretation::AllNegative,
+        };
+        let mut state = DerivationState::new(theory, config);
+        let step = state.step();
+        assert!(step.is_none(), "step must return None when done");
+        assert!(
+            matches!(state.result(), Some(DerivationResult::Timeout)),
+            "done state should be timeout"
+        );
+        assert!(state.step().is_none(), "step must stay None once done");
     }
 }

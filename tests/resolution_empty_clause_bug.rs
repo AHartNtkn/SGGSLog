@@ -1,12 +1,11 @@
-//! Tests for the infinite Resolution loop bug.
+//! Regression tests for the infinite Resolution loop bug (now fixed).
 //!
-//! Bug: For unsatisfiable theory {p(a), ¬p(a)}, the SGGS derivation gets stuck
-//! in an infinite Resolution loop instead of producing an empty clause.
+//! The bug: For unsatisfiable theory {p(a), ¬p(a)}, QueryStream would loop
+//! infinitely because DerivationState::step() didn't return None after setting
+//! done = Unsatisfiable.
 //!
-//! Expected behavior: Resolution of two complementary unit clauses should
-//! produce an empty clause, triggering DerivationResult::Unsatisfiable.
-//!
-//! Observed behavior: Resolution repeats infinitely without termination.
+//! Fix: step() now checks if self.done.is_some() at the start and returns None
+//! immediately, allowing callers to detect completion correctly.
 
 use sggslog::sggs::{
     derive, DerivationConfig, DerivationResult, DerivationState, InitialInterpretation,
@@ -95,13 +94,14 @@ fn two_propositional_complementary_units_should_be_unsatisfiable() {
     );
 }
 
-/// Same bug with ground complementary literals in non-unit clauses.
+/// Verify XOR theory is correctly identified as satisfiable.
 ///
 /// Theory: {p(a) ∨ q(b), ¬p(a) ∨ ¬q(b)}
 ///
-/// This should also be unsatisfiable.
+/// This is XOR (exactly one of p(a), q(b) must be true) - SATISFIABLE.
+/// Models: {p(a)=T, q(b)=F} or {p(a)=F, q(b)=T}
 #[test]
-fn complementary_ground_literals_in_clauses_should_be_unsatisfiable() {
+fn xor_theory_is_satisfiable() {
     let mut theory = Theory::new();
     theory.add_clause(Clause::new(vec![
         Literal::pos("p", vec![Term::constant("a")]),
@@ -112,21 +112,18 @@ fn complementary_ground_literals_in_clauses_should_be_unsatisfiable() {
         Literal::neg("q", vec![Term::constant("b")]),
     ]));
 
-    let (result, steps) = derive_with_limit(&theory, 50);
+    let (result, _steps) = derive_with_limit(&theory, 50);
 
     match result {
-        Some(DerivationResult::Unsatisfiable) => {}
-        Some(DerivationResult::Satisfiable(_)) => {
-            panic!("BUG: Got Satisfiable but theory is unsatisfiable")
+        Some(DerivationResult::Satisfiable(_)) => {}
+        Some(DerivationResult::Unsatisfiable) => {
+            panic!("Got Unsatisfiable but XOR theory is satisfiable")
         }
         Some(DerivationResult::Timeout) => {
-            panic!("BUG: Got Timeout unexpectedly")
+            panic!("Got Timeout unexpectedly")
         }
         None => {
-            panic!(
-                "BUG: Derivation stuck after {} steps - likely infinite Resolution loop",
-                steps
-            )
+            panic!("Derivation did not complete")
         }
     }
 }
