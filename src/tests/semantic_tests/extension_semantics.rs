@@ -553,3 +553,145 @@ fn extension_critical_replaces_clause_when_only_prefix_allows_proper_instances()
         other => panic!("Expected critical extension, got {:?}", other),
     }
 }
+
+// =============================================================================
+// REGRESSION TESTS: Non-ground literal redundancy detection
+// =============================================================================
+//
+// These tests prevent a bug where extension would repeatedly add the same
+// non-ground clause because `is_redundant_extension` failed to detect that
+// non-ground literals were already covered by the trail.
+
+#[test]
+fn extension_detects_non_ground_literal_already_on_trail() {
+    // Regression test: Extension should not add a clause when its I-false
+    // literal is already selected on the trail (even if non-ground).
+    //
+    // Bug: `is_redundant_extension` used `contains_ground()` which returns
+    // false for non-ground literals, causing infinite Extension→Deletion loops.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+    // Add P(f(X)) to the trail - a non-ground I-false literal
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos(
+            "P",
+            vec![Term::app("f", vec![Term::var("X")])],
+        )]),
+        0,
+    ));
+
+    // Theory has the same clause P(f(X))
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "P",
+        vec![Term::app("f", vec![Term::var("X")])],
+    )])]);
+
+    // Extension should return NoExtension because P(f(X)) is already covered
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {
+            // Correct: the clause is already on the trail
+        }
+        other => panic!(
+            "Expected NoExtension for clause already on trail, got {:?}.\n\
+             Bug: is_redundant_extension must detect non-ground literals on trail.",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_detects_alpha_equivalent_clauses_as_redundant() {
+    // Regression test: Alpha-equivalent clauses like P(X) and P(Y) should
+    // be detected as redundant once one is on the trail.
+    //
+    // Bug: `is_instance_of` used symmetric unification instead of one-way
+    // matching, causing it to sometimes fail for alpha-equivalent literals.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+    // Add P(X) to the trail
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]),
+        0,
+    ));
+
+    // Theory has P(Y) - alpha-equivalent to P(X)
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "P",
+        vec![Term::var("Y")],
+    )])]);
+
+    // Extension should return NoExtension because P(Y) is covered by P(X)
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {
+            // Correct: P(Y) is an instance of P(X) (and vice versa)
+        }
+        other => panic!(
+            "Expected NoExtension for alpha-equivalent clause, got {:?}.\n\
+             Bug: is_instance_of must use one-way matching, not symmetric unification.",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_detects_more_specific_instance_as_redundant() {
+    // A more specific clause P(a) should be detected as redundant when
+    // the more general P(X) is already on the trail.
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+    // Add P(X) to the trail - covers all ground instances
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::var("X")])]),
+        0,
+    ));
+
+    // Theory has P(a) - a specific instance of P(X)
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "P",
+        vec![Term::constant("a")],
+    )])]);
+
+    // Extension should return NoExtension because P(a) is covered by P(X)
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {
+            // Correct: P(a) is an instance of P(X)
+        }
+        other => panic!(
+            "Expected NoExtension for specific instance, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_allows_more_general_clause_when_specific_on_trail() {
+    // When a specific clause P(a) is on the trail, the more general P(X)
+    // should still be extensible (it covers additional ground instances).
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+    // Add P(a) to the trail - only covers P(a)
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        0,
+    ));
+
+    // Theory has P(X) - more general, covers P(b), P(c), etc.
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "P",
+        vec![Term::var("X")],
+    )])]);
+
+    // Extension should add P(X) because it's NOT an instance of P(a)
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => {
+            assert_eq!(
+                cc.clause.literals,
+                vec![Literal::pos("P", vec![Term::var("X")])]
+            );
+        }
+        other => panic!(
+            "Expected Extended for more general clause, got {:?}",
+            other
+        ),
+    }
+}

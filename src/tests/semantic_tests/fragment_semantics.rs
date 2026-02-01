@@ -80,14 +80,17 @@ fn restrained_requires_ground_preserving() {
 }
 
 #[test]
-fn not_ground_preserving_when_positive_introduces_new_var() {
-    // Var(C+) ⊄ Var(C-) => not positively ground-preserving
+fn not_positively_ground_preserving_when_positive_introduces_new_var() {
+    // SGGSdpFOL Def. 4: "positively ground-preserving if Var(C) ⊆ Var(C − )".
+    // SGGSdpFOL Def. 4: "negatively ground-preserving if Var(C) ⊆ Var(C + )".
+    // SGGSdpFOL Def. 4: "ground-preserving if it is one or the other."
     let clause = Clause::new(vec![
         Literal::neg("Q", vec![Term::var("X")]),
         Literal::pos("P", vec![Term::var("X"), Term::var("Y")]),
     ]);
     assert!(!clause.is_positively_ground_preserving());
-    assert!(!clause.is_ground_preserving());
+    assert!(clause.is_negatively_ground_preserving());
+    assert!(clause.is_ground_preserving()); // true because negatively ground-preserving
 }
 
 #[test]

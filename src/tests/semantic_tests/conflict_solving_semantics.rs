@@ -17,6 +17,10 @@ use crate::sggs::{
 fn conflict_solving_chain_reaches_empty_clause() {
     // Theory: P(a), ¬P(x) ∨ Q(x), ¬Q(a)
     // Build the trail explicitly to avoid assuming a deterministic extension order.
+    //
+    // Conflict clause criterion (Bonacina 2016, §3): "if all literals of C are uniformly false in I [Γ ], C is a conflict clause."
+    // Conflict explanation (Bonacina 2016, §3): "resolves a conflict clause and a justification".
+    // Move ordering (SGGSdpFOL, §3, Fig. 2 discussion): "moves B B D[M ] to the left of the clause A B C[L] in dp(Γ ) to which M is assigned."
     let a = Term::constant("a");
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(ConstrainedClause::with_constraint(
@@ -40,18 +44,18 @@ fn conflict_solving_chain_reaches_empty_clause() {
     );
     trail.push(conflict.clone());
 
-    // Move conflict clause before its rightmost justification (Q(a)).
+    // Move the I-all-true conflict clause ¬Q(a) before its justifying clause (¬P(x) ∨ Q(x)).
     let conflict_idx = trail.clauses().len() - 1;
     sggs_move(&mut trail, conflict_idx).expect("move failed");
 
-    let moved_idx = trail
+    // After move, resolve the conflict clause with I-false selected literal (Q)
+    // against its I-all-true justification (¬Q(a)).
+    let conflict_clause = trail
         .clauses()
         .iter()
-        .position(|c| c.selected_literal() == &Literal::neg("Q", vec![a.clone()]))
-        .expect("moved conflict clause not found");
-
-    // Resolve ¬Q(a) with ¬P(a) ∨ Q(a) to get ¬P(a), which is I-all-true.
-    let conflict_clause = trail.clauses()[moved_idx].clone();
+        .find(|c| c.selected_literal() == &Literal::pos("Q", vec![Term::var("X")]))
+        .expect("conflict clause with selected Q(X) not found")
+        .clone();
     let res1 = sggs_resolution(&conflict_clause, &trail);
     let cc = match res1 {
         ResolutionResult::Resolvent(cc) => cc,
