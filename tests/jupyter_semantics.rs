@@ -107,3 +107,29 @@ fn kernel_next_without_active_query_errors() {
     let err = kernel.execute(":next").expect_err("expected error");
     assert!(!err.message.is_empty());
 }
+
+#[test]
+fn kernel_recursive_query_streams_incrementally() {
+    let mut kernel = Kernel::new();
+    let r1 = kernel.execute("(p a)").unwrap();
+    assert!(!r1.is_empty(), "expected non-empty response, got {}", r1);
+    let r2 = kernel.execute("(p X) -> (p (f X))").unwrap();
+    assert!(!r2.is_empty(), "expected non-empty response, got {}", r2);
+
+    let first = kernel.execute("?- (p X)").expect("query failed");
+    assert!(
+        !contains_any(&first, &["exhausted", "no more", "no answers", "false", "none"]),
+        "expected streaming answer, got {}",
+        first
+    );
+    assert!(first.contains("a"), "expected answer containing a, got {}", first);
+
+    for _ in 0..2 {
+        let next = kernel.execute(":next").expect("next failed");
+        assert!(
+            !contains_any(&next, &["exhausted", "no more", "no answers", "false", "none"]),
+            "expected additional answers, got {}",
+            next
+        );
+    }
+}

@@ -255,6 +255,13 @@ impl Default for Repl {
 mod tests {
     use super::*;
 
+    fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+        let hay = haystack.to_ascii_lowercase();
+        needles
+            .iter()
+            .any(|n| hay.contains(&n.to_ascii_lowercase()))
+    }
+
     #[test]
     fn test_repl_new_constructs() {
         let _ = Repl::new();
@@ -334,5 +341,35 @@ mod tests {
             .process_line(":next")
             .expect_err("expected error on :next");
         assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn test_repl_recursive_query_streams_incrementally() {
+        let mut repl = Repl::new();
+        let r1 = repl.process_line("(p a)").unwrap();
+        assert!(!r1.is_empty(), "expected non-empty response, got {}", r1);
+        let r2 = repl.process_line("(p X) -> (p (f X))").unwrap();
+        assert!(!r2.is_empty(), "expected non-empty response, got {}", r2);
+
+        let first = repl.process_line("?- (p X)").unwrap();
+        assert!(
+            !contains_any(&first, &["exhausted", "no more", "no answers", "false", "none"]),
+            "expected streaming answer, got {}",
+            first
+        );
+        assert!(
+            first.contains("a"),
+            "expected answer containing a, got {}",
+            first
+        );
+
+        for _ in 0..2 {
+            let next = repl.process_line(":next").unwrap();
+            assert!(
+                !contains_any(&next, &["exhausted", "no more", "no answers", "false", "none"]),
+                "expected additional answers, got {}",
+                next
+            );
+        }
     }
 }

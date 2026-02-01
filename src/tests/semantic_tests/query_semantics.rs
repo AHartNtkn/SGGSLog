@@ -456,6 +456,43 @@ fn negative_only_query_streams_over_user_signature() {
 }
 
 #[test]
+fn positive_query_streams_incrementally_over_recursive_theory() {
+    // Source: spec.md (query answers are streamed; callers fetch answers via next).
+    // Quote: "Query answers are streamed: a query returns the first answer ... and subsequent answers are retrieved explicitly via `:next`."
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![
+        Literal::neg("p", vec![Term::var("X")]),
+        Literal::pos("p", vec![Term::app("f", vec![Term::var("X")])]),
+    ]));
+
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
+
+    let mut seen = HashSet::new();
+    for _ in 0..3 {
+        match stream.next() {
+            QueryResult::Answer(ans) => {
+                assert!(
+                    seen.insert(subst_key(&ans)),
+                    "answers must be duplicate-free"
+                );
+            }
+            other => panic!("Expected streaming answer, got {:?}", other),
+        }
+    }
+
+    match stream.next() {
+        QueryResult::Answer(_) => {}
+        QueryResult::Exhausted => panic!("expected more answers, got exhausted"),
+        QueryResult::Timeout => panic!("expected answer, got timeout"),
+    }
+}
+
+#[test]
 fn query_respects_resource_limit() {
     let theory = crate::theory::Theory::new();
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
