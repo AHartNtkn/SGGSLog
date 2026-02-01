@@ -49,21 +49,12 @@ pub struct DerivationState {
 }
 
 /// Configuration for SGGS derivation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DerivationConfig {
     /// Timeout in milliseconds (None for unlimited)
     pub timeout_ms: Option<u64>,
     /// The initial interpretation to use
     pub initial_interp: InitialInterpretation,
-}
-
-impl Default for DerivationConfig {
-    fn default() -> Self {
-        DerivationConfig {
-            timeout_ms: None,
-            initial_interp: InitialInterpretation::default(),
-        }
-    }
 }
 
 /// Run SGGS derivation on a theory.
@@ -136,16 +127,16 @@ pub fn derive_with_trace(
 fn has_complementary_ground_literals(trail: &Trail) -> bool {
     let clauses = trail.clauses();
 
-    for i in 0..clauses.len() {
-        let lit_i = clauses[i].selected_literal();
+    for (i, clause_i) in clauses.iter().enumerate() {
+        let lit_i = clause_i.selected_literal();
 
         // Only check ground literals
         if !lit_i.is_ground() {
             continue;
         }
 
-        for j in (i + 1)..clauses.len() {
-            let lit_j = clauses[j].selected_literal();
+        for clause_j in clauses.iter().skip(i + 1) {
+            let lit_j = clause_j.selected_literal();
 
             // Only check ground literals
             if !lit_j.is_ground() {
@@ -153,9 +144,7 @@ fn has_complementary_ground_literals(trail: &Trail) -> bool {
             }
 
             // Check if they have the same predicate but opposite polarity
-            if lit_i.atom.predicate == lit_j.atom.predicate
-                && lit_i.positive != lit_j.positive
-            {
+            if lit_i.atom.predicate == lit_j.atom.predicate && lit_i.positive != lit_j.positive {
                 // Also check that arguments match (for ground literals with args)
                 if lit_i.atom.args == lit_j.atom.args {
                     return true;
@@ -176,15 +165,14 @@ fn extract_model(trail: &Trail) -> Model {
     for clause in trail.clauses() {
         let selected = clause.selected_literal();
         // I-false selected literals contribute to the model (they are made true by the trail)
-        if init_interp.is_false(selected) && clause.constraint.is_satisfiable() {
-            if selected.positive {
-                if selected.is_ground() {
-                    // Ground positive literal - add to atoms
-                    true_atoms.insert(selected.atom.clone());
-                } else {
-                    // Non-ground positive literal - add as a pattern
-                    true_patterns.push(selected.clone());
-                }
+        if init_interp.is_false(selected) && clause.constraint.is_satisfiable() && selected.positive
+        {
+            if selected.is_ground() {
+                // Ground positive literal - add to atoms
+                true_atoms.insert(selected.atom.clone());
+            } else {
+                // Non-ground positive literal - add as a pattern
+                true_patterns.push(selected.clone());
             }
         }
     }
@@ -423,7 +411,9 @@ fn is_resolution_applicable(conflict: &ConstrainedClause, trail: &Trail) -> bool
                 {
                     if let UnifyResult::Success(_) = unify_literals(clause_selected, &complement) {
                         // Justifying clause should be I-all-true (selected is I-TRUE)
-                        if init_interp.is_true(clause_selected) && clause.constraint.is_satisfiable() {
+                        if init_interp.is_true(clause_selected)
+                            && clause.constraint.is_satisfiable()
+                        {
                             return true;
                         }
                     }
@@ -472,7 +462,12 @@ fn is_extension_applicable(trail: &Trail, theory: &Theory) -> bool {
         return false;
     }
 
-    matches!(sggs_extension(trail, theory), ExtensionResult::Extended(_) | ExtensionResult::Conflict(_) | ExtensionResult::Critical { .. })
+    matches!(
+        sggs_extension(trail, theory),
+        ExtensionResult::Extended(_)
+            | ExtensionResult::Conflict(_)
+            | ExtensionResult::Critical { .. }
+    )
 }
 
 impl DerivationState {
@@ -748,7 +743,9 @@ impl DerivationState {
             let selected = clause.selected_literal();
             // Check if selected is the complement of conflict's selected
             if selected.is_complementary(&conflict_selected) {
-                if let UnifyResult::Success(_) = unify_literals(selected, &conflict_selected.negated()) {
+                if let UnifyResult::Success(_) =
+                    unify_literals(selected, &conflict_selected.negated())
+                {
                     to_remove.push(idx);
                 }
             }

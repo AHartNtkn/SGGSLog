@@ -46,6 +46,9 @@ impl ConstrainedClause {
     /// Check if this is a conflict clause in the given interpretation.
     /// A conflict clause has all literals uniformly false.
     pub fn is_conflict(&self, interp: &TrailInterpretation) -> bool {
-        self.clause.literals.iter().all(|lit| interp.is_uniformly_false(lit))
+        self.clause
+            .literals
+            .iter()
+            .all(|lit| interp.is_uniformly_false(lit))
     }
 }

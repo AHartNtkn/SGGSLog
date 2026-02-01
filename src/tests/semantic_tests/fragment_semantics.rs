@@ -495,10 +495,7 @@ fn bdi_example_from_paper() -> crate::theory::Theory {
         Literal::neg("S", vec![x.clone(), y.clone()]),
         Literal::pos("T", vec![x]),
     ]));
-    theory.add_clause(Clause::new(vec![Literal::neg(
-        "P",
-        vec![a, b, c],
-    )]));
+    theory.add_clause(Clause::new(vec![Literal::neg("P", vec![a, b, c])]));
     theory
 }
 

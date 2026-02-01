@@ -3,8 +3,8 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{ConstrainedClause, Trail};
-use crate::syntax::Term;
 use crate::constraint::{AtomicConstraint, Constraint};
+use crate::syntax::Term;
 use crate::unify::{unify_literals, Substitution, UnifyResult};
 
 /// SGGS-Deletion: remove disposable clauses from trail.
@@ -56,7 +56,7 @@ fn is_disposable_at_index(clause: &ConstrainedClause, trail: &Trail, idx: usize)
     // If all instances are complementary (ccgi), the clause is NOT disposable.
     // A clause has no pcgi's if all complements are already in I^p of the prefix.
     let prefix = trail.prefix(idx);
-    let prefix_partial = prefix.partial_interpretation();
+    let _prefix_partial = prefix.partial_interpretation();
 
     // For a clause to have pcgi's, there must exist some ground instance whose
     // complement is NOT in I^p(prefix). We can't enumerate all instances,
@@ -84,8 +84,9 @@ fn is_disposable_at_index(clause: &ConstrainedClause, trail: &Trail, idx: usize)
         let earlier_selected = earlier.selected_literal();
 
         // Same polarity and predicate required
-        if selected.positive != earlier_selected.positive ||
-           selected.atom.predicate != earlier_selected.atom.predicate {
+        if selected.positive != earlier_selected.positive
+            || selected.atom.predicate != earlier_selected.atom.predicate
+        {
             continue;
         }
 
@@ -134,9 +135,9 @@ fn is_instance_of(lit1: &crate::syntax::Literal, lit2: &crate::syntax::Literal) 
             // All MGU bindings should be for variables in lit2, not lit1
             // (Or they're identity bindings for lit1's vars)
             for v in mgu.domain() {
-                if lit1_vars.contains(&v) {
+                if lit1_vars.contains(v) {
                     // lit1's variable is being bound - check if it's identity
-                    if let Some(t) = mgu.lookup(&v) {
+                    if let Some(t) = mgu.lookup(v) {
                         match t {
                             crate::syntax::Term::Var(v2) if v2 == v => continue,
                             _ => return false,
@@ -151,15 +152,20 @@ fn is_instance_of(lit1: &crate::syntax::Literal, lit2: &crate::syntax::Literal) 
 }
 
 /// Check if a literal is fully covered by clauses in the prefix.
-fn is_fully_covered_by_prefix(lit: &crate::syntax::Literal, trail: &Trail, prefix_len: usize) -> bool {
+fn is_fully_covered_by_prefix(
+    lit: &crate::syntax::Literal,
+    trail: &Trail,
+    prefix_len: usize,
+) -> bool {
     // A literal is fully covered if there exists an earlier clause whose
     // selected literal is at least as general (covers all instances).
     for idx in 0..prefix_len {
         let earlier = &trail.clauses()[idx];
         let earlier_selected = earlier.selected_literal();
 
-        if lit.positive == earlier_selected.positive &&
-           lit.atom.predicate == earlier_selected.atom.predicate {
+        if lit.positive == earlier_selected.positive
+            && lit.atom.predicate == earlier_selected.atom.predicate
+        {
             // Check if earlier_selected covers all of lit's instances
             if is_instance_of(lit, earlier_selected) && earlier.constraint.is_satisfiable() {
                 return true;
@@ -194,9 +200,10 @@ fn earlier_clauses_cover_all(selected: &crate::syntax::Literal, trail: &Trail, i
         let earlier = &trail.clauses()[earlier_idx];
         let earlier_selected = earlier.selected_literal();
 
-        if selected.positive != earlier_selected.positive ||
-           selected.atom.predicate != earlier_selected.atom.predicate ||
-           !earlier.constraint.is_satisfiable() {
+        if selected.positive != earlier_selected.positive
+            || selected.atom.predicate != earlier_selected.atom.predicate
+            || !earlier.constraint.is_satisfiable()
+        {
             continue;
         }
 
@@ -263,11 +270,18 @@ fn extract_signature(trail: &Trail) -> Signature {
         }
     }
 
-    Signature { constants, functions }
+    Signature {
+        constants,
+        functions,
+    }
 }
 
 /// Recursively collect constants and function symbols from a term.
-fn collect_symbols(term: &Term, constants: &mut HashSet<String>, functions: &mut HashMap<String, usize>) {
+fn collect_symbols(
+    term: &Term,
+    constants: &mut HashSet<String>,
+    functions: &mut HashMap<String, usize>,
+) {
     match term {
         Term::Var(_) => {}
         Term::App(sym, args) => {
@@ -313,7 +327,7 @@ fn constraint_entails_after_subst(
     }
 
     // General case: A |= B iff A ∧ ¬B is unsatisfiable
-    let a_and_not_b = earlier_applied.and(clause_simplified.not());
+    let a_and_not_b = earlier_applied.and(!clause_simplified);
     !a_and_not_b.is_satisfiable()
 }
 
@@ -329,7 +343,7 @@ fn apply_subst_to_constraint(c: &Constraint, sigma: &Substitution) -> Constraint
         Constraint::Or(left, right) => {
             apply_subst_to_constraint(left, sigma).or(apply_subst_to_constraint(right, sigma))
         }
-        Constraint::Not(inner) => apply_subst_to_constraint(inner, sigma).not(),
+        Constraint::Not(inner) => !apply_subst_to_constraint(inner, sigma),
     }
 }
 
@@ -382,7 +396,7 @@ fn simplify_after_subst(c: &Constraint) -> Constraint {
             match inner_simp {
                 Constraint::True => Constraint::False,
                 Constraint::False => Constraint::True,
-                other => other.not(),
+                other => !other,
             }
         }
     }
@@ -412,18 +426,16 @@ fn simplify_atomic_after_subst(a: &AtomicConstraint) -> Constraint {
                 }
             }
         }
-        AtomicConstraint::RootNotEquals(t, expected_root) => {
-            match t {
-                Term::App(sym, _) => {
-                    if &sym.name == expected_root {
-                        Constraint::False
-                    } else {
-                        Constraint::True
-                    }
+        AtomicConstraint::RootNotEquals(t, expected_root) => match t {
+            Term::App(sym, _) => {
+                if &sym.name == expected_root {
+                    Constraint::False
+                } else {
+                    Constraint::True
                 }
-                Term::Var(_) => Constraint::Atomic(a.clone()),
             }
-        }
+            Term::Var(_) => Constraint::Atomic(a.clone()),
+        },
         AtomicConstraint::Identical(t1, t2) => {
             // If both are the same term after substitution, it's trivially true
             if t1 == t2 {

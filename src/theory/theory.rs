@@ -42,8 +42,9 @@ impl Theory {
     pub fn from_statements(stmts: &[Statement]) -> Result<Self, ConversionError> {
         let mut theory = Theory::new();
         for stmt in stmts {
-            let clauses = clausify_statement(stmt)
-                .map_err(|e| ConversionError { message: e.to_string() })?;
+            let clauses = clausify_statement(stmt).map_err(|e| ConversionError {
+                message: e.to_string(),
+            })?;
             for clause in clauses {
                 theory.add_clause(clause);
             }
@@ -160,7 +161,9 @@ impl Theory {
         // BDI requires all clauses to be positively ground-preserving.
         // Fresh variables in positive literals (not appearing in any negative)
         // violate the BDI constraints.
-        self.clauses.iter().all(|c| c.is_positively_ground_preserving())
+        self.clauses
+            .iter()
+            .all(|c| c.is_positively_ground_preserving())
     }
 
     /// Check if this theory is stratified.
@@ -289,7 +292,9 @@ impl Theory {
             match crate::unify::unify_literals(&lit1, &lit2) {
                 UnifyResult::Success(subst) => {
                     // Check if substitution is a pure renaming (all mappings are to variables)
-                    subst.bindings().all(|(_, term)| matches!(term, crate::syntax::Term::Var(_)))
+                    subst
+                        .bindings()
+                        .all(|(_, term)| matches!(term, crate::syntax::Term::Var(_)))
                 }
                 UnifyResult::Failure(_) => false,
             }
@@ -297,19 +302,23 @@ impl Theory {
 
         // Check if rule (lhs -> rhs) matches (neg_atom -> pos_atom) modulo renaming
         fn rule_matches(rule: &RewriteRule, neg_atom: &Atom, pos_atom: &Atom) -> bool {
-            atoms_match_modulo_renaming(&rule.lhs, neg_atom) &&
-            atoms_match_modulo_renaming(&rule.rhs, pos_atom)
+            atoms_match_modulo_renaming(&rule.lhs, neg_atom)
+                && atoms_match_modulo_renaming(&rule.rhs, pos_atom)
         }
 
         // Check if equation (lhs ~ rhs) covers (neg_atom, pos_atom) modulo renaming
         fn equation_matches(eq: &RewriteRule, neg_atom: &Atom, pos_atom: &Atom) -> bool {
             // Equation is symmetric, so check both directions
-            (atoms_match_modulo_renaming(&eq.lhs, neg_atom) && atoms_match_modulo_renaming(&eq.rhs, pos_atom)) ||
-            (atoms_match_modulo_renaming(&eq.lhs, pos_atom) && atoms_match_modulo_renaming(&eq.rhs, neg_atom))
+            (atoms_match_modulo_renaming(&eq.lhs, neg_atom)
+                && atoms_match_modulo_renaming(&eq.rhs, pos_atom))
+                || (atoms_match_modulo_renaming(&eq.lhs, pos_atom)
+                    && atoms_match_modulo_renaming(&eq.rhs, neg_atom))
         }
 
         for clause in &self.clauses {
-            let neg_atoms: Vec<&Atom> = clause.literals.iter()
+            let neg_atoms: Vec<&Atom> = clause
+                .literals
+                .iter()
                 .filter(|l| !l.positive)
                 .map(|l| &l.atom)
                 .collect();
@@ -343,7 +352,6 @@ impl Theory {
     /// by applying rewrite rules from RS. Starting from all ground atoms in the
     /// theory, we compute the closure under rule application.
     pub fn basis(&self, system: &RestrainingSystem) -> std::collections::HashSet<Atom> {
-        use crate::syntax::Term;
         use std::collections::HashSet;
 
         // Collect all ground atoms from the theory
@@ -403,17 +411,18 @@ fn apply_rewrite_rule(atom: &Atom, rule: &RewriteRule) -> Option<Atom> {
                     true
                 }
             }
-            Term::App(f1, args1) => {
-                match target {
-                    Term::Var(_) => false,
-                    Term::App(f2, args2) => {
-                        if f1.name != f2.name || args1.len() != args2.len() {
-                            return false;
-                        }
-                        args1.iter().zip(args2.iter()).all(|(a, b)| match_term(a, b, bindings))
+            Term::App(f1, args1) => match target {
+                Term::Var(_) => false,
+                Term::App(f2, args2) => {
+                    if f1.name != f2.name || args1.len() != args2.len() {
+                        return false;
                     }
+                    args1
+                        .iter()
+                        .zip(args2.iter())
+                        .all(|(a, b)| match_term(a, b, bindings))
                 }
-            }
+            },
         }
     }
 
@@ -426,16 +435,21 @@ fn apply_rewrite_rule(atom: &Atom, rule: &RewriteRule) -> Option<Atom> {
     // Apply substitution to rule.rhs
     fn apply_subst(term: &Term, bindings: &HashMap<String, Term>) -> Term {
         match term {
-            Term::Var(v) => {
-                bindings.get(v.name()).cloned().unwrap_or_else(|| term.clone())
-            }
-            Term::App(f, args) => {
-                Term::App(f.clone(), args.iter().map(|a| apply_subst(a, bindings)).collect())
-            }
+            Term::Var(v) => bindings
+                .get(v.name())
+                .cloned()
+                .unwrap_or_else(|| term.clone()),
+            Term::App(f, args) => Term::App(
+                f.clone(),
+                args.iter().map(|a| apply_subst(a, bindings)).collect(),
+            ),
         }
     }
 
-    let new_args: Vec<Term> = rule.rhs.args.iter()
+    let new_args: Vec<Term> = rule
+        .rhs
+        .args
+        .iter()
         .map(|a| apply_subst(a, &bindings))
         .collect();
 

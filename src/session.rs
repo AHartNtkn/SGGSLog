@@ -3,8 +3,7 @@
 use crate::normalize::{clausify_statement, clausify_statements};
 use crate::parser::{parse_file, Directive, ProjectionSetting, Setting, Statement};
 use crate::sggs::{
-    answer_query, answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult,
-    QueryStream,
+    answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult, QueryStream,
 };
 use crate::syntax::{Literal, UserSignature};
 use crate::theory::Theory;
@@ -53,11 +52,12 @@ const DEFAULT_TIMEOUT_MS: u64 = 5000;
 impl Session {
     /// Create a new empty session.
     pub fn new() -> Self {
-        let mut config = DerivationConfig::default();
-        config.timeout_ms = Some(DEFAULT_TIMEOUT_MS);
         Session {
             theory: Theory::new(),
-            config,
+            config: DerivationConfig {
+                timeout_ms: Some(DEFAULT_TIMEOUT_MS),
+                ..DerivationConfig::default()
+            },
             user_signature: UserSignature::empty(),
             projection_policy: ProjectionPolicy::OnlyUserSymbols,
             active_query: None,
@@ -87,8 +87,10 @@ impl Session {
             Statement::Formula(formula) => {
                 // Track user signature from the formula before clausifying
                 self.user_signature.extend_from_formula(&formula);
-                let clauses = clausify_statement(&Statement::Formula(formula))
-                    .map_err(|e| SessionError { message: e.to_string() })?;
+                let clauses =
+                    clausify_statement(&Statement::Formula(formula)).map_err(|e| SessionError {
+                        message: e.to_string(),
+                    })?;
                 for clause in clauses {
                     self.theory.add_clause(clause);
                 }
@@ -125,16 +127,18 @@ impl Session {
             self.projection_policy,
         );
         self.active_query = Some(stream);
-        // Call next on the stored stream
-        self.active_query.as_mut().unwrap().next()
+        // Call next_answer on the stored stream
+        self.active_query.as_mut().unwrap().next_answer()
     }
 
     /// Load a file and add all its clauses to the theory.
     pub fn load_file(&mut self, path: &str) -> Result<DirectiveResult, SessionError> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| SessionError { message: format!("Failed to read file '{}': {}", path, e) })?;
-        let stmts = parse_file(&contents)
-            .map_err(|e| SessionError { message: format!("Parse error: {}", e) })?;
+        let contents = std::fs::read_to_string(path).map_err(|e| SessionError {
+            message: format!("Failed to read file '{}': {}", path, e),
+        })?;
+        let stmts = parse_file(&contents).map_err(|e| SessionError {
+            message: format!("Parse error: {}", e),
+        })?;
 
         // Validate that file contains only clauses/formulas, not queries/directives
         for stmt in &stmts {
@@ -154,7 +158,6 @@ impl Session {
         }
 
         // Track user signatures and clausify
-        let mut clause_count = 0;
         for stmt in &stmts {
             match stmt {
                 Statement::Clause(clause) => {
@@ -167,9 +170,10 @@ impl Session {
             }
         }
 
-        let clauses = clausify_statements(&stmts)
-            .map_err(|e| SessionError { message: e.to_string() })?;
-        clause_count = clauses.len();
+        let clauses = clausify_statements(&stmts).map_err(|e| SessionError {
+            message: e.to_string(),
+        })?;
+        let clause_count = clauses.len();
         for clause in clauses {
             self.theory.add_clause(clause);
         }
@@ -191,7 +195,7 @@ impl Session {
             Directive::Next => {
                 // Return the next answer from the active query
                 if let Some(ref mut stream) = self.active_query {
-                    let result = stream.next();
+                    let _result = stream.next_answer();
                     // Return as a DirectiveResult - we'll need to wrap it
                     // For now, we return an error since DirectiveResult doesn't handle query results
                     Err(SessionError {
@@ -215,7 +219,7 @@ impl Session {
     /// Get the next answer from the active query stream.
     pub fn next_answer(&mut self) -> Result<QueryResult, SessionError> {
         if let Some(ref mut stream) = self.active_query {
-            Ok(stream.next())
+            Ok(stream.next_answer())
         } else {
             Err(SessionError {
                 message: "No active query".to_string(),

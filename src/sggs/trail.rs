@@ -12,9 +12,7 @@ fn apply_subst_to_constraint(constraint: &Constraint, subst: &Substitution) -> C
     match constraint {
         Constraint::True => Constraint::True,
         Constraint::False => Constraint::False,
-        Constraint::Atomic(atomic) => {
-            Constraint::Atomic(apply_subst_to_atomic(atomic, subst))
-        }
+        Constraint::Atomic(atomic) => Constraint::Atomic(apply_subst_to_atomic(atomic, subst)),
         Constraint::And(left, right) => {
             let left_new = apply_subst_to_constraint(left, subst);
             let right_new = apply_subst_to_constraint(right, subst);
@@ -36,28 +34,16 @@ fn apply_subst_to_constraint(constraint: &Constraint, subst: &Substitution) -> C
 fn apply_subst_to_atomic(atomic: &AtomicConstraint, subst: &Substitution) -> AtomicConstraint {
     match atomic {
         AtomicConstraint::Identical(t1, t2) => {
-            AtomicConstraint::Identical(
-                subst.apply_to_term(t1),
-                subst.apply_to_term(t2),
-            )
+            AtomicConstraint::Identical(subst.apply_to_term(t1), subst.apply_to_term(t2))
         }
         AtomicConstraint::NotIdentical(t1, t2) => {
-            AtomicConstraint::NotIdentical(
-                subst.apply_to_term(t1),
-                subst.apply_to_term(t2),
-            )
+            AtomicConstraint::NotIdentical(subst.apply_to_term(t1), subst.apply_to_term(t2))
         }
         AtomicConstraint::RootEquals(t, s) => {
-            AtomicConstraint::RootEquals(
-                subst.apply_to_term(t),
-                s.clone(),
-            )
+            AtomicConstraint::RootEquals(subst.apply_to_term(t), s.clone())
         }
         AtomicConstraint::RootNotEquals(t, s) => {
-            AtomicConstraint::RootNotEquals(
-                subst.apply_to_term(t),
-                s.clone(),
-            )
+            AtomicConstraint::RootNotEquals(subst.apply_to_term(t), s.clone())
         }
     }
 }
@@ -138,7 +124,10 @@ impl Trail {
         let selected_is_i_false = self.initial_interp.is_false(selected);
 
         // Check if there are any I-false literals in the clause
-        let has_i_false = clause.clause.literals.iter()
+        let has_i_false = clause
+            .clause
+            .literals
+            .iter()
             .any(|lit| self.initial_interp.is_false(lit));
 
         if has_i_false && !selected_is_i_false {
@@ -160,12 +149,12 @@ impl Trail {
     }
 
     /// Get the interpretation induced by this trail.
-    pub fn interpretation(&self) -> TrailInterpretation {
+    pub fn interpretation(&self) -> TrailInterpretation<'_> {
         TrailInterpretation { trail: self }
     }
 
     /// Get the partial interpretation I^p induced by this trail.
-    pub fn partial_interpretation(&self) -> PartialInterpretation {
+    pub fn partial_interpretation(&self) -> PartialInterpretation<'_> {
         PartialInterpretation { trail: self }
     }
 
@@ -183,10 +172,14 @@ impl Trail {
                 let lit_j = self.clauses[j].selected_literal();
 
                 // Check if the atoms have the same predicate (regardless of polarity)
-                if lit_i.atom.predicate == lit_j.atom.predicate &&
-                   lit_i.atom.args.len() == lit_j.atom.args.len() {
+                if lit_i.atom.predicate == lit_j.atom.predicate
+                    && lit_i.atom.args.len() == lit_j.atom.args.len()
+                {
                     // Try to unify the argument lists
-                    let pairs: Vec<_> = lit_i.atom.args.iter()
+                    let pairs: Vec<_> = lit_i
+                        .atom
+                        .args
+                        .iter()
                         .zip(lit_j.atom.args.iter())
                         .map(|(a, b)| (a.clone(), b.clone()))
                         .collect();
@@ -214,7 +207,9 @@ impl Trail {
         for clause in theory.clauses() {
             // Check if this clause is satisfied by I[Γ]
             // A clause is satisfied if at least one literal is uniformly true
-            let satisfied = clause.literals.iter()
+            let satisfied = clause
+                .literals
+                .iter()
                 .any(|lit| interp.is_uniformly_true(lit));
             if !satisfied {
                 return false;
@@ -249,15 +244,13 @@ impl Trail {
                 for earlier_clause in prefix.clauses.iter() {
                     let earlier_selected = earlier_clause.selected_literal();
                     // An I-true selected literal that matches complement blocks this selected
-                    if self.initial_interp.is_true(earlier_selected) {
-                        if complement.positive == earlier_selected.positive
-                            && complement.atom.predicate == earlier_selected.atom.predicate
-                        {
-                            if crate::unify::unify_literals(&complement, earlier_selected).is_success() {
-                                is_blocked = true;
-                                break;
-                            }
-                        }
+                    if self.initial_interp.is_true(earlier_selected)
+                        && complement.positive == earlier_selected.positive
+                        && complement.atom.predicate == earlier_selected.atom.predicate
+                        && crate::unify::unify_literals(&complement, earlier_selected).is_success()
+                    {
+                        is_blocked = true;
+                        break;
                     }
                 }
                 if !is_blocked {
@@ -393,8 +386,9 @@ impl<'a> TrailInterpretation<'a> {
             if self.trail.initial_interp.is_false(selected) {
                 // This selected literal contributes to the model.
                 // Check if lit is an instance of selected
-                if lit.positive == selected.positive &&
-                   lit.atom.predicate == selected.atom.predicate {
+                if lit.positive == selected.positive
+                    && lit.atom.predicate == selected.atom.predicate
+                {
                     // Check if lit unifies with selected under the constraint
                     if clause.constraint.is_satisfiable() {
                         // For uniform truth, the selected literal covers lit
@@ -474,7 +468,10 @@ impl<'a> PartialInterpretation<'a> {
         // If lit has constants, some must be in the trail and some not - that's a "gap".
         // Literals that are either ALL known or ALL fresh are OK.
         if !lit_constants.is_empty() && !trail_constants.is_empty() {
-            let known_count = lit_constants.iter().filter(|c| trail_constants.contains(*c)).count();
+            let known_count = lit_constants
+                .iter()
+                .filter(|c| trail_constants.contains(*c))
+                .count();
             let unknown_count = lit_constants.len() - known_count;
 
             // If there's a mix (some known, some unknown), exclude this literal
@@ -488,8 +485,7 @@ impl<'a> PartialInterpretation<'a> {
             let selected = clause.selected_literal();
 
             // Check if lit matches the selected literal's pattern
-            if lit.positive == selected.positive &&
-               lit.atom.predicate == selected.atom.predicate {
+            if lit.positive == selected.positive && lit.atom.predicate == selected.atom.predicate {
                 // Try to unify lit with selected
                 if let UnifyResult::Success(mgu) = crate::unify::unify_literals(lit, selected) {
                     // Apply the MGU to the constraint and check satisfiability

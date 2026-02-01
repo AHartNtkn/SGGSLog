@@ -71,20 +71,14 @@ pub fn sggs_left_split(
                 Term::App(fn_sym, _) => {
                     if fn_sym.arity == 0 {
                         // Constant: use Identical constraint
-                        intersection_constraint = intersection_constraint.and(
-                            Constraint::Atomic(AtomicConstraint::Identical(
-                                clause_arg.clone(),
-                                conflict_arg.clone(),
-                            )),
-                        );
+                        intersection_constraint = intersection_constraint.and(Constraint::Atomic(
+                            AtomicConstraint::Identical(clause_arg.clone(), conflict_arg.clone()),
+                        ));
                     } else {
                         // Function application: use RootEquals constraint
-                        intersection_constraint = intersection_constraint.and(
-                            Constraint::Atomic(AtomicConstraint::RootEquals(
-                                clause_arg.clone(),
-                                fn_sym.name.clone(),
-                            )),
-                        );
+                        intersection_constraint = intersection_constraint.and(Constraint::Atomic(
+                            AtomicConstraint::RootEquals(clause_arg.clone(), fn_sym.name.clone()),
+                        ));
                     }
                     has_constraint = true;
                 }
@@ -187,7 +181,11 @@ fn build_complement_constraint(
 ) -> Constraint {
     let mut complement_parts = Vec::new();
 
-    for (clause_arg, conflict_arg) in clause_lit.atom.args.iter().zip(conflict_lit.atom.args.iter())
+    for (clause_arg, conflict_arg) in clause_lit
+        .atom
+        .args
+        .iter()
+        .zip(conflict_lit.atom.args.iter())
     {
         if let Term::Var(_) = clause_arg {
             match conflict_arg {

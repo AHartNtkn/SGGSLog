@@ -1,6 +1,6 @@
 //! AST types for SGGSLog surface syntax.
 
-use crate::syntax::{Clause, Formula, Literal, Query};
+use crate::syntax::{Clause, Formula, Query};
 
 /// A statement in a SGGSLog source file.
 #[derive(Debug, Clone, PartialEq, Eq)]

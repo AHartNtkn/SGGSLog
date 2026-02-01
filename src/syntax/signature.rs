@@ -42,12 +42,7 @@ impl Signature {
     pub fn from_clause(clause: &Clause) -> Signature {
         let mut sig = Signature::empty();
         for lit in &clause.literals {
-            let arg_sorts = lit
-                .atom
-                .args
-                .iter()
-                .map(term_sort)
-                .collect::<Vec<_>>();
+            let arg_sorts = lit.atom.args.iter().map(term_sort).collect::<Vec<_>>();
             sig.predicates.insert(PredSig {
                 name: lit.atom.predicate.clone(),
                 arity: lit.atom.args.len(),

@@ -69,14 +69,14 @@ fn ground_query_proved_when_entailed() {
     )]));
     let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             assert!(ans.domain().is_empty(), "ground answer should be empty");
             assert_no_spurious_bindings(&[ans], &query.variables());
         }
         other => panic!("Expected query proved, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -87,7 +87,7 @@ fn ground_query_not_entailed_has_no_answers() {
     let theory = crate::theory::Theory::new();
     let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected no answers, got {:?}", other),
     }
@@ -107,9 +107,12 @@ fn unsatisfiable_theory_query_exhausted() {
     )]));
     let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
-        other => panic!("Expected exhausted on unsatisfiable theory, got {:?}", other),
+        other => panic!(
+            "Expected exhausted on unsatisfiable theory, got {:?}",
+            other
+        ),
     }
 }
 
@@ -121,7 +124,7 @@ fn unsatisfiable_query_exhausted() {
         Literal::neg("p", vec![Term::constant("a")]),
     ]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected no answers, got {:?}", other),
     }
@@ -137,7 +140,7 @@ fn non_ground_query_returns_instance_answer() {
     )]));
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
@@ -145,7 +148,7 @@ fn non_ground_query_returns_instance_answer() {
         }
         other => panic!("Expected answers, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -165,7 +168,7 @@ fn non_ground_query_derived_answer() {
     ]));
     let query = Query::new(vec![Literal::pos("q", vec![Term::var("X")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
@@ -173,7 +176,7 @@ fn non_ground_query_derived_answer() {
         }
         other => panic!("Expected derived answer, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -189,7 +192,7 @@ fn answer_query_does_not_project_internal_symbols() {
     )]));
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("$sk0")));
@@ -214,7 +217,7 @@ fn conjunctive_query_multiple_answers() {
     let x = Var::new("X");
     let mut got = HashSet::new();
     for _ in 0..2 {
-        match stream.next() {
+        match stream.next_answer() {
             QueryResult::Answer(ans) => {
                 let v = ans.lookup(&x).expect("expected binding for X").clone();
                 got.insert(v);
@@ -225,7 +228,7 @@ fn conjunctive_query_multiple_answers() {
     }
     assert!(got.contains(&Term::constant("a")));
     assert!(got.contains(&Term::constant("b")));
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -253,7 +256,7 @@ fn conjunctive_query_joins_answers() {
         Literal::pos("q", vec![Term::var("X")]),
     ]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
@@ -261,7 +264,7 @@ fn conjunctive_query_joins_answers() {
         }
         other => panic!("Expected answers, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -281,14 +284,14 @@ fn query_stream_dedups_duplicate_facts() {
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
         }
         other => panic!("Expected answer, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -312,15 +315,18 @@ fn query_repeated_variable_enforces_equality() {
         vec![Term::var("X"), Term::var("X")],
     )]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
             assert_no_spurious_bindings(&[ans], &query.variables());
         }
-        other => panic!("Expected answer for repeated-variable query, got {:?}", other),
+        other => panic!(
+            "Expected answer for repeated-variable query, got {:?}",
+            other
+        ),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -330,24 +336,18 @@ fn query_repeated_variable_enforces_equality() {
 fn query_stream_dedups_alpha_equivalent_clauses() {
     // Two alpha-equivalent clauses should not yield duplicate answers.
     let mut theory = crate::theory::Theory::new();
-    theory.add_clause(Clause::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("X")],
-    )]));
-    theory.add_clause(Clause::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("Y")],
-    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos("p", vec![Term::var("X")])]));
+    theory.add_clause(Clause::new(vec![Literal::pos("p", vec![Term::var("Y")])]));
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             assert!(ans.domain().is_empty(), "ground answer should be empty");
         }
         other => panic!("Expected answer, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -362,7 +362,7 @@ fn negative_literal_query_no_answers() {
     )]));
     let query = Query::new(vec![Literal::neg("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected no answers, got {:?}", other),
     }
@@ -374,13 +374,13 @@ fn negative_literal_query_true_when_atom_absent() {
     let theory = crate::theory::Theory::new();
     let query = Query::new(vec![Literal::neg("p", vec![Term::constant("a")])]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             assert!(ans.domain().is_empty(), "ground answer should be empty");
         }
         other => panic!("Expected answers, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -409,7 +409,7 @@ fn negative_literal_query_with_shared_variable() {
         Literal::neg("q", vec![Term::var("X")]),
     ]);
     let mut stream = answer_query(&theory, &query, crate::sggs::DerivationConfig::default());
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("b")));
@@ -417,7 +417,7 @@ fn negative_literal_query_with_shared_variable() {
         }
         other => panic!("Expected answers, got {:?}", other),
     }
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -446,7 +446,7 @@ fn negative_only_query_streams_over_user_signature() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(ans) => {
             let x = Var::new("X");
             assert_eq!(ans.lookup(&x), Some(&Term::constant("a")));
@@ -464,7 +464,7 @@ fn query_respects_resource_limit() {
         initial_interp: crate::sggs::InitialInterpretation::AllNegative,
     };
     let mut stream = answer_query(&theory, &query, config);
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Timeout => {}
         other => panic!("Expected timeout, got {:?}", other),
     }
@@ -490,7 +490,7 @@ fn projected_query_allows_user_functions() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    let ans = match stream.next() {
+    let ans = match stream.next_answer() {
         QueryResult::Answer(ans) => ans,
         other => panic!("Expected answers, got {:?}", other),
     };
@@ -521,7 +521,7 @@ fn projected_query_filters_internal_symbols() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    assert!(matches!(stream.next(), QueryResult::Exhausted));
+    assert!(matches!(stream.next_answer(), QueryResult::Exhausted));
 }
 
 #[test]
@@ -544,7 +544,7 @@ fn projected_query_filters_internal_functions() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    assert!(matches!(stream.next(), QueryResult::Exhausted));
+    assert!(matches!(stream.next_answer(), QueryResult::Exhausted));
 }
 
 #[test]
@@ -567,7 +567,7 @@ fn projected_query_filters_internal_symbols_nested_in_user_terms() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    assert!(matches!(stream.next(), QueryResult::Exhausted));
+    assert!(matches!(stream.next_answer(), QueryResult::Exhausted));
 }
 
 #[test]
@@ -594,7 +594,7 @@ fn projected_query_keeps_user_witnesses_and_drops_internal() {
         &user_sig,
         ProjectionPolicy::OnlyUserSymbols,
     );
-    let ans = match stream.next() {
+    let ans = match stream.next_answer() {
         QueryResult::Answer(ans) => ans,
         other => panic!("Expected answers, got {:?}", other),
     };
@@ -608,7 +608,7 @@ fn projected_query_keeps_user_witnesses_and_drops_internal() {
             Term::App(sym, _) => user_sig.contains_function(&sym.name, sym.arity),
         }
     }));
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -633,7 +633,7 @@ fn projected_query_allows_internal_symbols_when_enabled() {
         &user_sig,
         ProjectionPolicy::AllowInternal,
     );
-    let ans = match stream.next() {
+    let ans = match stream.next_answer() {
         QueryResult::Answer(ans) => ans,
         other => panic!("Expected answers, got {:?}", other),
     };
@@ -644,7 +644,7 @@ fn projected_query_allows_internal_symbols_when_enabled() {
             Term::App(sym, _) => !user_sig.contains_function(&sym.name, sym.arity),
         }
     }));
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }
@@ -669,7 +669,7 @@ fn projected_query_allows_internal_functions_when_enabled() {
         &user_sig,
         ProjectionPolicy::AllowInternal,
     );
-    let ans = match stream.next() {
+    let ans = match stream.next_answer() {
         QueryResult::Answer(ans) => ans,
         other => panic!("Expected answer, got {:?}", other),
     };
@@ -678,7 +678,7 @@ fn projected_query_allows_internal_functions_when_enabled() {
         ans.lookup(&x),
         Some(&Term::app("$skf", vec![Term::constant("a")]))
     );
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected exhausted stream, got {:?}", other),
     }

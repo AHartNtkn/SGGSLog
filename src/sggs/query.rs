@@ -29,8 +29,11 @@ pub enum ProjectionPolicy {
 /// Streaming query evaluation state.
 #[derive(Debug, Clone)]
 pub struct QueryStream {
+    #[allow(dead_code)]
     query: Query,
+    #[allow(dead_code)]
     user_signature: Option<UserSignature>,
+    #[allow(dead_code)]
     policy: ProjectionPolicy,
     /// Pre-computed answers from the derivation
     answers: Vec<Substitution>,
@@ -81,7 +84,7 @@ impl QueryStream {
     }
 
     /// Retrieve the next answer in the stream.
-    pub fn next(&mut self) -> QueryResult {
+    pub fn next_answer(&mut self) -> QueryResult {
         if self.next_idx < self.answers.len() {
             let ans = self.answers[self.next_idx].clone();
             self.next_idx += 1;
@@ -136,13 +139,13 @@ fn extract_answers(
 
                 // Only include answer if all query variables are bound to projectable terms
                 // If a query variable is bound but filtered out, skip this answer
-                let orig_bound_vars: HashSet<_> = sigma.bindings()
+                let orig_bound_vars: HashSet<_> = sigma
+                    .bindings()
                     .filter(|(v, _)| query_vars.contains(*v))
                     .map(|(v, _)| v.clone())
                     .collect();
-                let proj_bound_vars: HashSet<_> = projected.bindings()
-                    .map(|(v, _)| v.clone())
-                    .collect();
+                let proj_bound_vars: HashSet<_> =
+                    projected.bindings().map(|(v, _)| v.clone()).collect();
 
                 // If we lost bindings due to projection, skip this answer
                 if proj_bound_vars.len() < orig_bound_vars.len() {
@@ -170,13 +173,13 @@ fn extract_answers(
                 let projected = project_substitution(&sigma, &query_vars, user_signature, policy);
 
                 // Only include answer if all query variables are bound to projectable terms
-                let orig_bound_vars: HashSet<_> = sigma.bindings()
+                let orig_bound_vars: HashSet<_> = sigma
+                    .bindings()
                     .filter(|(v, _)| query_vars.contains(*v))
                     .map(|(v, _)| v.clone())
                     .collect();
-                let proj_bound_vars: HashSet<_> = projected.bindings()
-                    .map(|(v, _)| v.clone())
-                    .collect();
+                let proj_bound_vars: HashSet<_> =
+                    projected.bindings().map(|(v, _)| v.clone()).collect();
 
                 if proj_bound_vars.len() < orig_bound_vars.len() {
                     continue;
@@ -237,7 +240,10 @@ fn extract_negative_answers(
                     positive: true,
                     atom: query_lit.atom.clone(),
                 };
-                matches!(unify_literals(&query_as_pos, pattern), UnifyResult::Success(_))
+                matches!(
+                    unify_literals(&query_as_pos, pattern),
+                    UnifyResult::Success(_)
+                )
             });
 
             if !covered_by_pattern {
@@ -250,7 +256,9 @@ fn extract_negative_answers(
 
     // Non-ground negative query - enumerate over user signature constants
     if let Some(sig) = user_signature {
-        let constants: Vec<Term> = sig.signature().functions
+        let constants: Vec<Term> = sig
+            .signature()
+            .functions
             .iter()
             .filter(|fn_sig| fn_sig.arity == 0)
             .map(|fn_sig| Term::constant(&fn_sig.name))
@@ -274,11 +282,15 @@ fn extract_negative_answers(
                         positive: true,
                         atom: grounded_lit.atom.clone(),
                     };
-                    matches!(unify_literals(&grounded_as_pos, pattern), UnifyResult::Success(_))
+                    matches!(
+                        unify_literals(&grounded_as_pos, pattern),
+                        UnifyResult::Success(_)
+                    )
                 });
 
                 if !covered_by_pattern {
-                    let projected = project_substitution(&subst, query_vars, user_signature, policy);
+                    let projected =
+                        project_substitution(&subst, query_vars, user_signature, policy);
                     let canonical = canonical_form(&projected);
                     if !seen_answers.contains(&canonical) {
                         seen_answers.insert(canonical);
@@ -333,7 +345,10 @@ fn find_multi_literal_answers(
         let canonical: Vec<(Var, Term)> = {
             let mut pairs: Vec<_> = projected.bindings().collect();
             pairs.sort_by(|a, b| a.0.name().cmp(b.0.name()));
-            pairs.into_iter().map(|(v, t)| (v.clone(), t.clone())).collect()
+            pairs
+                .into_iter()
+                .map(|(v, t)| (v.clone(), t.clone()))
+                .collect()
         };
         if !seen.contains(&canonical) {
             seen.insert(canonical);
@@ -445,7 +460,10 @@ fn term_uses_only_user_symbols(term: &Term, sig: &UserSignature) -> bool {
 fn canonical_form(subst: &Substitution) -> Vec<(Var, Term)> {
     let mut pairs: Vec<_> = subst.bindings().collect();
     pairs.sort_by(|a, b| a.0.name().cmp(b.0.name()));
-    pairs.into_iter().map(|(v, t)| (v.clone(), t.clone())).collect()
+    pairs
+        .into_iter()
+        .map(|(v, t)| (v.clone(), t.clone()))
+        .collect()
 }
 
 /// Rename variables in a literal to avoid clashing with the given variable set.
@@ -461,7 +479,9 @@ fn rename_away_from(lit: &Literal, avoid: &HashSet<Var>) -> Literal {
                 let fresh_name = format!("_r{}", counter);
                 counter += 1;
                 let fresh_var = Var::new(&fresh_name);
-                if !avoid.contains(&fresh_var) && !renaming.domain().iter().any(|rv| rv.name() == fresh_name) {
+                if !avoid.contains(&fresh_var)
+                    && !renaming.domain().iter().any(|rv| rv.name() == fresh_name)
+                {
                     renaming.bind(v.clone(), Term::Var(fresh_var));
                     break;
                 }

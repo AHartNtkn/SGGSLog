@@ -187,7 +187,10 @@ fn extension_does_not_over_instantiate_free_vars() {
                 _ => panic!("unconstrained variable should not be over-instantiated"),
             }
         }
-        other => panic!("Expected extension with unconstrained variable, got {:?}", other),
+        other => panic!(
+            "Expected extension with unconstrained variable, got {:?}",
+            other
+        ),
     }
 }
 
@@ -219,7 +222,7 @@ fn extension_inherits_constraints_from_side_premises() {
                         Term::constant("a"),
                     ),
                 );
-                if !cc.constraint.intersects(&constraint.not()) {
+                if !cc.constraint.intersects(&(!constraint.clone())) {
                     found = true;
                     break;
                 }
@@ -250,7 +253,10 @@ fn extension_not_applied_when_theory_already_satisfied_non_ground() {
     // Now I[Γ] should satisfy S, so extension must not apply again.
     match sggs_extension(&trail, &theory) {
         ExtensionResult::NoExtension => {}
-        other => panic!("Expected NoExtension when theory is already satisfied, got {:?}", other),
+        other => panic!(
+            "Expected NoExtension when theory is already satisfied, got {:?}",
+            other
+        ),
     }
 }
 
@@ -302,10 +308,7 @@ fn extension_inapplicable_when_trail_not_disjoint_prefix() {
 
     match sggs_extension(&trail, &theory) {
         ExtensionResult::NoExtension => {}
-        other => panic!(
-            "Expected NoExtension when Γ != dp(Γ), got {:?}",
-            other
-        ),
+        other => panic!("Expected NoExtension when Γ != dp(Γ), got {:?}", other),
     }
 }
 
@@ -381,10 +384,7 @@ fn extension_n0_uses_most_general_falsifier_i_positive() {
                 UnifyResult::Success(_) => {}
                 _ => panic!("extended literal must be an instance of the premise"),
             }
-            assert!(
-                !lit.positive,
-                "selected literal must be I-false under I⁺"
-            );
+            assert!(!lit.positive, "selected literal must be I-false under I⁺");
         }
         other => panic!("Expected extension with n=0 under I⁺, got {:?}", other),
     }
@@ -509,7 +509,10 @@ fn extension_non_conflicting_selects_literal_with_proper_instances() {
                 extended.is_proper_selected_instance(idx, cc.selected_literal()),
                 "selected literal should have proper constrained ground instances"
             );
-            assert!(cc.selected_literal().positive, "selected literal must be I-false under I⁻");
+            assert!(
+                cc.selected_literal().positive,
+                "selected literal must be I-false under I⁻"
+            );
         }
         other => panic!("Expected non-conflicting extension, got {:?}", other),
     }
@@ -689,9 +692,6 @@ fn extension_allows_more_general_clause_when_specific_on_trail() {
                 vec![Literal::pos("P", vec![Term::var("X")])]
             );
         }
-        other => panic!(
-            "Expected Extended for more general clause, got {:?}",
-            other
-        ),
+        other => panic!("Expected Extended for more general clause, got {:?}", other),
     }
 }

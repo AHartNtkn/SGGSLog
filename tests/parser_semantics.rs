@@ -38,7 +38,7 @@ fn test_application_without_parentheses() {
 fn test_negation_sugar_ascii_and_unicode() {
     let f1 = single_formula("~p");
     let f2 = single_formula("¬p");
-    let expected = Formula::not(atom("p"));
+    let expected = Formula::negation(atom("p"));
     assert_eq!(f1, expected);
     assert_eq!(f2, expected);
 }
@@ -211,8 +211,7 @@ q
 
 #[test]
 fn test_directive_parsing_load_and_set() {
-    let stmts =
-        parse_file(":load \"file.sggs\"\n:set timeout_ms 10").expect("parse_file failed");
+    let stmts = parse_file(":load \"file.sggs\"\n:set timeout_ms 10").expect("parse_file failed");
     assert_eq!(stmts.len(), 2);
     assert_eq!(
         stmts[0],
@@ -262,9 +261,7 @@ fn test_directive_parsing_set_projection() {
     assert_eq!(
         stmts[1],
         Statement::Directive(sggslog::parser::Directive::Set(
-            sggslog::parser::Setting::Projection(
-                sggslog::parser::ProjectionSetting::AllowInternal
-            )
+            sggslog::parser::Setting::Projection(sggslog::parser::ProjectionSetting::AllowInternal)
         ))
     );
 }

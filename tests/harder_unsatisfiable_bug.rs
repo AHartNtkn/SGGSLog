@@ -114,8 +114,8 @@
 //! literals are in the partial interpretation.
 
 use sggslog::sggs::{
-    derive, derive_with_trace, DerivationConfig, DerivationResult, DerivationState,
-    InitialInterpretation, InferenceRule,
+    derive, derive_with_trace, DerivationConfig, DerivationResult, DerivationState, InferenceRule,
+    InitialInterpretation,
 };
 use sggslog::syntax::{Clause, Literal};
 use sggslog::theory::Theory;
@@ -183,18 +183,20 @@ fn harder_unsatisfiable_limited_steps() {
             let selected = clause.selected_literal();
             println!(
                 "  [{}] selected[{}]={:?} constraint={:?} clause={:?}",
-                i,
-                clause.selected,
-                selected,
-                clause.constraint,
-                clause.clause.literals
+                i, clause.selected, selected, clause.constraint, clause.clause.literals
             );
         }
-        println!("Disjoint prefix length: {}", state.trail().disjoint_prefix_length());
+        println!(
+            "Disjoint prefix length: {}",
+            state.trail().disjoint_prefix_length()
+        );
         println!("Conflict: {:?}", state.trail().find_conflict());
 
         if let Some(result) = state.result() {
-            println!("Derivation finished after {} steps: {:?}", step_count, result);
+            println!(
+                "Derivation finished after {} steps: {:?}",
+                step_count, result
+            );
             if matches!(result, DerivationResult::Unsatisfiable) {
                 return; // Success!
             } else {
@@ -214,17 +216,17 @@ fn harder_unsatisfiable_limited_steps() {
                 println!("No more steps after {} steps", step_count);
                 // step() returning None may have set the result - check again
                 if let Some(result) = state.result() {
-                    println!("Derivation finished after {} steps: {:?}", step_count, result);
+                    println!(
+                        "Derivation finished after {} steps: {:?}",
+                        step_count, result
+                    );
                     if matches!(result, DerivationResult::Unsatisfiable) {
                         return; // Success!
                     } else {
                         panic!("Expected Unsatisfiable, got {:?}", result);
                     }
                 }
-                panic!(
-                    "Derivation stuck after {} steps without result",
-                    step_count
-                );
+                panic!("Derivation stuck after {} steps without result", step_count);
             }
         }
     }
@@ -383,7 +385,10 @@ fn bug_demo_extension_adds_duplicate_clause() {
     assert_eq!(state.trail().len(), 1);
 
     let first_selected = state.trail().clauses()[0].selected_literal().clone();
-    println!("After step 1: trail has 1 clause, selected = {:?}", first_selected);
+    println!(
+        "After step 1: trail has 1 clause, selected = {:?}",
+        first_selected
+    );
 
     // Step 2: This is where the bug manifests
     // Extension should NOT add the same clause again with the same selected literal
@@ -434,10 +439,7 @@ fn partial_interpretation_only_contains_selected_literals() {
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
 
     // Add (p ∨ q) with p selected (index 0)
-    let clause = Clause::new(vec![
-        Literal::pos("p", vec![]),
-        Literal::pos("q", vec![]),
-    ]);
+    let clause = Clause::new(vec![Literal::pos("p", vec![]), Literal::pos("q", vec![])]);
     let cc = ConstrainedClause::with_constraint(clause, Constraint::True, 0);
     trail.push(cc);
 
@@ -447,7 +449,10 @@ fn partial_interpretation_only_contains_selected_literals() {
     let p = Literal::pos("p", vec![]);
     let p_in_partial = partial.contains_ground(&p);
     println!("p in partial: {}", p_in_partial);
-    assert!(p_in_partial, "Selected literal p should be in partial interpretation");
+    assert!(
+        p_in_partial,
+        "Selected literal p should be in partial interpretation"
+    );
 
     // q is NOT selected (it's a non-selected literal), should NOT be in partial
     let q = Literal::pos("q", vec![]);

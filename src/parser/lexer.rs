@@ -8,9 +8,8 @@ pub enum Token {
     Variable(String),   // uppercase: variables
 
     // Delimiters
-    LParen,  // (
-    RParen,  // )
-    Newline, // newline (significant for statement separation)
+    LParen, // (
+    RParen, // )
 
     // Logic operators (Unicode)
     Not,     // ¬
@@ -151,21 +150,6 @@ impl<'a> Lexer<'a> {
             line: self.line,
             column: self.column,
         })
-    }
-
-    /// Peek at the next token without consuming it.
-    pub fn peek_token(&mut self) -> Result<Token, LexError> {
-        let saved_position = self.position;
-        let saved_line = self.line;
-        let saved_column = self.column;
-
-        let token = self.next_token()?;
-
-        self.position = saved_position;
-        self.line = saved_line;
-        self.column = saved_column;
-
-        Ok(token)
     }
 
     fn advance(&mut self, bytes: usize) {

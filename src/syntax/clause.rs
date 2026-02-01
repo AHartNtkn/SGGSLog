@@ -2,10 +2,10 @@
 
 use std::collections::HashSet;
 
-use crate::unify::Substitution;
 use super::literal::Literal;
 use super::order::AtomOrder;
 use super::term::{Term, Var};
+use crate::unify::Substitution;
 
 /// A clause is a disjunction of literals.
 ///
@@ -30,7 +30,9 @@ impl Clause {
 
     /// Create the empty clause (represents contradiction/false).
     pub fn empty() -> Self {
-        Clause { literals: Vec::new() }
+        Clause {
+            literals: Vec::new(),
+        }
     }
 
     /// Check if this is the empty clause.
@@ -88,11 +90,13 @@ impl Clause {
     /// A clause is positively ground-preserving if every variable that appears
     /// in a positive literal also appears in some negative literal.
     pub fn is_positively_ground_preserving(&self) -> bool {
-        let pos_vars: HashSet<Var> = self.positive_literals()
+        let pos_vars: HashSet<Var> = self
+            .positive_literals()
             .iter()
             .flat_map(|l| l.variables())
             .collect();
-        let neg_vars: HashSet<Var> = self.negative_literals()
+        let neg_vars: HashSet<Var> = self
+            .negative_literals()
             .iter()
             .flat_map(|l| l.variables())
             .collect();
@@ -103,11 +107,13 @@ impl Clause {
     /// A clause is negatively ground-preserving if every variable that appears
     /// in a negative literal also appears in some positive literal.
     pub fn is_negatively_ground_preserving(&self) -> bool {
-        let pos_vars: HashSet<Var> = self.positive_literals()
+        let pos_vars: HashSet<Var> = self
+            .positive_literals()
             .iter()
             .flat_map(|l| l.variables())
             .collect();
-        let neg_vars: HashSet<Var> = self.negative_literals()
+        let neg_vars: HashSet<Var> = self
+            .negative_literals()
             .iter()
             .flat_map(|l| l.variables())
             .collect();
@@ -143,7 +149,10 @@ impl Clause {
             // Find a dominating negative literal
             // Equal atoms satisfy the dominance condition (an atom dominates itself)
             let dominated = neg_lits.iter().any(|neg_lit| {
-                matches!(order.cmp(&neg_lit.atom, &pos_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+                matches!(
+                    order.cmp(&neg_lit.atom, &pos_lit.atom),
+                    AtomCmp::Greater | AtomCmp::Equal
+                )
             });
 
             if !dominated {
@@ -179,7 +188,10 @@ impl Clause {
             // Find a dominating positive literal
             // Equal atoms satisfy the dominance condition (an atom dominates itself)
             let dominated = pos_lits.iter().any(|pos_lit| {
-                matches!(order.cmp(&pos_lit.atom, &neg_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+                matches!(
+                    order.cmp(&pos_lit.atom, &neg_lit.atom),
+                    AtomCmp::Greater | AtomCmp::Equal
+                )
             });
 
             if !dominated {
@@ -202,7 +214,8 @@ impl Clause {
         }
 
         // Get variables from positive literals
-        let pos_vars: HashSet<Var> = self.positive_literals()
+        let pos_vars: HashSet<Var> = self
+            .positive_literals()
             .iter()
             .flat_map(|l| l.variables())
             .collect();
@@ -244,17 +257,19 @@ impl Clause {
         use super::order::AtomCmp;
 
         // Get variables from positive literals that have infinite sorts
-        let pos_vars: HashSet<Var> = self.positive_literals()
+        let pos_vars: HashSet<Var> = self
+            .positive_literals()
             .iter()
             .flat_map(|l| l.variables())
-            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .filter(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)))
             .collect();
 
         // Get variables from negative literals that have infinite sorts
-        let neg_vars: HashSet<Var> = self.negative_literals()
+        let neg_vars: HashSet<Var> = self
+            .negative_literals()
             .iter()
             .flat_map(|l| l.variables())
-            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .filter(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)))
             .collect();
 
         // Must be "sort ground-preserving": infinite-sort vars in C+ ⊆ infinite-sort vars in C-
@@ -267,9 +282,10 @@ impl Clause {
         // Each positive literal with non-ground infinite-sort variables must be dominated
         for pos_lit in self.positive_literals() {
             // Check if this literal has any non-ground infinite-sort variables
-            let has_infinite_var = pos_lit.variables().iter().any(|v| {
-                v.sort().map_or(true, |s| infinite_sorts.contains(s))
-            });
+            let has_infinite_var = pos_lit
+                .variables()
+                .iter()
+                .any(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)));
 
             if !has_infinite_var || pos_lit.is_ground() {
                 continue;
@@ -278,7 +294,10 @@ impl Clause {
             // Find a dominating negative literal
             // Equal atoms satisfy the dominance condition (an atom dominates itself)
             let dominated = neg_lits.iter().any(|neg_lit| {
-                matches!(order.cmp(&neg_lit.atom, &pos_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+                matches!(
+                    order.cmp(&neg_lit.atom, &pos_lit.atom),
+                    AtomCmp::Greater | AtomCmp::Equal
+                )
             });
 
             if !dominated {
@@ -298,17 +317,19 @@ impl Clause {
         use super::order::AtomCmp;
 
         // Get variables from positive literals that have infinite sorts
-        let pos_vars: HashSet<Var> = self.positive_literals()
+        let pos_vars: HashSet<Var> = self
+            .positive_literals()
             .iter()
             .flat_map(|l| l.variables())
-            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .filter(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)))
             .collect();
 
         // Get variables from negative literals that have infinite sorts
-        let neg_vars: HashSet<Var> = self.negative_literals()
+        let neg_vars: HashSet<Var> = self
+            .negative_literals()
             .iter()
             .flat_map(|l| l.variables())
-            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .filter(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)))
             .collect();
 
         // Must be "sort negatively ground-preserving": infinite-sort vars in C- ⊆ infinite-sort vars in C+
@@ -320,9 +341,10 @@ impl Clause {
 
         // Each negative literal with non-ground infinite-sort variables must be dominated
         for neg_lit in self.negative_literals() {
-            let has_infinite_var = neg_lit.variables().iter().any(|v| {
-                v.sort().map_or(true, |s| infinite_sorts.contains(s))
-            });
+            let has_infinite_var = neg_lit
+                .variables()
+                .iter()
+                .any(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)));
 
             if !has_infinite_var || neg_lit.is_ground() {
                 continue;
@@ -331,7 +353,10 @@ impl Clause {
             // Find a dominating positive literal
             // Equal atoms satisfy the dominance condition (an atom dominates itself)
             let dominated = pos_lits.iter().any(|pos_lit| {
-                matches!(order.cmp(&pos_lit.atom, &neg_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+                matches!(
+                    order.cmp(&pos_lit.atom, &neg_lit.atom),
+                    AtomCmp::Greater | AtomCmp::Equal
+                )
             });
 
             if !dominated {
@@ -347,17 +372,19 @@ impl Clause {
     /// Like PVD, but the depth constraint only applies to variables of infinite sorts.
     pub fn is_sort_refined_pvd(&self, infinite_sorts: &HashSet<String>) -> bool {
         // Get variables from positive literals that have infinite sorts
-        let pos_vars: HashSet<Var> = self.positive_literals()
+        let pos_vars: HashSet<Var> = self
+            .positive_literals()
             .iter()
             .flat_map(|l| l.variables())
-            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .filter(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)))
             .collect();
 
         // Get variables from negative literals that have infinite sorts
-        let neg_vars: HashSet<Var> = self.negative_literals()
+        let neg_vars: HashSet<Var> = self
+            .negative_literals()
             .iter()
             .flat_map(|l| l.variables())
-            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .filter(|v| v.sort().is_none_or(|s| infinite_sorts.contains(s)))
             .collect();
 
         // Must be "sort positively ground-preserving" for infinite sorts
@@ -385,12 +412,11 @@ fn var_depth_in_term(var: &Var, term: &Term, current_depth: usize) -> usize {
     match term {
         Term::Var(v) if v == var => current_depth,
         Term::Var(_) => 0,
-        Term::App(_, args) => {
-            args.iter()
-                .map(|t| var_depth_in_term(var, t, current_depth + 1))
-                .max()
-                .unwrap_or(0)
-        }
+        Term::App(_, args) => args
+            .iter()
+            .map(|t| var_depth_in_term(var, t, current_depth + 1))
+            .max()
+            .unwrap_or(0),
     }
 }
 

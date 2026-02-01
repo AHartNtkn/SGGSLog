@@ -2,8 +2,8 @@
 
 use std::collections::HashSet;
 
-use crate::unify::Substitution;
 use super::term::{Term, Var};
+use crate::unify::Substitution;
 
 /// An atom (predicate application).
 ///

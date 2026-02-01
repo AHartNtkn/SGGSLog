@@ -63,7 +63,10 @@ fn sggs_move_succeeds_with_valid_assignment() {
     ));
     // Move should work here because P(a) justifies ¬P(a).
     let result = sggs_move(&mut trail, 1);
-    assert!(result.is_ok(), "move should succeed with valid justification");
+    assert!(
+        result.is_ok(),
+        "move should succeed with valid justification"
+    );
 }
 
 #[test]

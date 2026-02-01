@@ -283,7 +283,7 @@ fn splitting_has_no_missing_instances_symbolically() {
     }
 
     // No missing instances: original constraint implies coverage.
-    let missing = clause.constraint.clone().and(coverage.not());
+    let missing = clause.constraint.clone().and(!coverage);
     assert!(
         !missing.is_satisfiable(),
         "split should not miss any instances of the original clause"

@@ -46,17 +46,11 @@ impl AtomicConstraint {
             }
             AtomicConstraint::RootEquals(t, symbol) => {
                 let t_applied = subst.apply_to_term(t);
-                match t_applied.root_symbol() {
-                    Some(root) => Some(root == symbol),
-                    None => None, // Variable has no root symbol
-                }
+                t_applied.root_symbol().map(|root| root == symbol)
             }
             AtomicConstraint::RootNotEquals(t, symbol) => {
                 let t_applied = subst.apply_to_term(t);
-                match t_applied.root_symbol() {
-                    Some(root) => Some(root != symbol),
-                    None => None, // Variable has no root symbol
-                }
+                t_applied.root_symbol().map(|root| root != symbol)
             }
         }
     }

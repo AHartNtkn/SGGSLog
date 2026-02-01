@@ -100,7 +100,10 @@ fn alpha_equivalent(a: &Clause, b: &Clause) -> bool {
 
 #[test]
 fn test_from_statements_rejects_query() {
-    let stmts = vec![Statement::Query(Query::new(vec![Literal::pos("p", vec![])]))];
+    let stmts = vec![Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![],
+    )]))];
     let err = Theory::from_statements(&stmts).expect_err("expected error");
     assert!(
         err.message.to_lowercase().contains("query"),

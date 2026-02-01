@@ -1,5 +1,7 @@
 //! Compound constraints for SGGS.
 
+use std::ops::Not;
+
 use super::AtomicConstraint;
 
 /// A constraint is a boolean combination of atomic constraints.
@@ -28,11 +30,6 @@ impl Constraint {
     /// Disjoin two constraints.
     pub fn or(self, other: Constraint) -> Constraint {
         Constraint::Or(Box::new(self), Box::new(other))
-    }
-
-    /// Negate this constraint.
-    pub fn not(self) -> Constraint {
-        Constraint::Not(Box::new(self))
     }
 
     /// Simplify this constraint.
@@ -162,12 +159,10 @@ fn standardize_constraint(c: &Constraint) -> Constraint {
             let right_std = standardize_constraint(right);
             // For standard form, we eliminate Or using De Morgan
             // A ∨ B ≡ ¬(¬A ∧ ¬B), then push negation down
-            push_negation_down(&Constraint::Not(Box::new(
-                Constraint::And(
-                    Box::new(Constraint::Not(Box::new(left_std))),
-                    Box::new(Constraint::Not(Box::new(right_std))),
-                )
-            )))
+            push_negation_down(&Constraint::Not(Box::new(Constraint::And(
+                Box::new(Constraint::Not(Box::new(left_std))),
+                Box::new(Constraint::Not(Box::new(right_std))),
+            ))))
         }
         Constraint::Not(inner) => {
             let inner_std = standardize_constraint(inner);
@@ -199,7 +194,7 @@ fn standardize_atomic(atomic: &AtomicConstraint) -> Constraint {
                 Constraint::True
             } else {
                 Constraint::Not(Box::new(Constraint::Atomic(
-                    AtomicConstraint::NotIdentical(t1.clone(), t2.clone())
+                    AtomicConstraint::NotIdentical(t1.clone(), t2.clone()),
                 )))
             }
         }
@@ -210,8 +205,8 @@ fn standardize_atomic(atomic: &AtomicConstraint) -> Constraint {
                 Some(root) if root == s => Constraint::True,
                 Some(_) => Constraint::False,
                 None => Constraint::Not(Box::new(Constraint::Atomic(
-                    AtomicConstraint::RootNotEquals(t.clone(), s.clone())
-                )))
+                    AtomicConstraint::RootNotEquals(t.clone(), s.clone()),
+                ))),
             }
         }
         // NotIdentical and RootNotEquals are already in standard form
@@ -249,32 +244,29 @@ fn push_negation_down(c: &Constraint) -> Constraint {
                     // For standard form: only negate Identical and RootEquals
                     // Keep Not wrappers around NotIdentical and RootNotEquals
                     match atomic {
-                        AtomicConstraint::Identical(t1, t2) => {
-                            Constraint::Atomic(AtomicConstraint::NotIdentical(t1.clone(), t2.clone()))
-                        }
-                        AtomicConstraint::RootEquals(t, s) => {
-                            Constraint::Atomic(AtomicConstraint::RootNotEquals(t.clone(), s.clone()))
-                        }
+                        AtomicConstraint::Identical(t1, t2) => Constraint::Atomic(
+                            AtomicConstraint::NotIdentical(t1.clone(), t2.clone()),
+                        ),
+                        AtomicConstraint::RootEquals(t, s) => Constraint::Atomic(
+                            AtomicConstraint::RootNotEquals(t.clone(), s.clone()),
+                        ),
                         // Keep Not wrapper for NotIdentical and RootNotEquals
-                        AtomicConstraint::NotIdentical(_, _) | AtomicConstraint::RootNotEquals(_, _) => {
+                        AtomicConstraint::NotIdentical(_, _)
+                        | AtomicConstraint::RootNotEquals(_, _) => {
                             Constraint::Not(Box::new(Constraint::Atomic(atomic.clone())))
                         }
                     }
                 }
             }
         }
-        Constraint::And(left, right) => {
-            Constraint::And(
-                Box::new(push_negation_down(left)),
-                Box::new(push_negation_down(right)),
-            )
-        }
-        Constraint::Or(left, right) => {
-            Constraint::Or(
-                Box::new(push_negation_down(left)),
-                Box::new(push_negation_down(right)),
-            )
-        }
+        Constraint::And(left, right) => Constraint::And(
+            Box::new(push_negation_down(left)),
+            Box::new(push_negation_down(right)),
+        ),
+        Constraint::Or(left, right) => Constraint::Or(
+            Box::new(push_negation_down(left)),
+            Box::new(push_negation_down(right)),
+        ),
         other => other.clone(),
     }
 }
@@ -296,7 +288,7 @@ fn is_contradiction_normalized(left: &Constraint, right: &Constraint) -> bool {
         _ => match right {
             Constraint::Not(inner) if inner.as_ref() == left => return true,
             _ => {}
-        }
+        },
     }
 
     // Check atomic contradictions directly
@@ -342,15 +334,15 @@ fn push_not_inside(c: &Constraint) -> Constraint {
                 Constraint::Atomic(a) => {
                     // Convert Not(Atomic) to complementary Atomic
                     match a {
-                        AtomicConstraint::RootEquals(t, s) => {
-                            Constraint::Atomic(AtomicConstraint::RootNotEquals(t.clone(), s.clone()))
-                        }
+                        AtomicConstraint::RootEquals(t, s) => Constraint::Atomic(
+                            AtomicConstraint::RootNotEquals(t.clone(), s.clone()),
+                        ),
                         AtomicConstraint::RootNotEquals(t, s) => {
                             Constraint::Atomic(AtomicConstraint::RootEquals(t.clone(), s.clone()))
                         }
-                        AtomicConstraint::Identical(t1, t2) => {
-                            Constraint::Atomic(AtomicConstraint::NotIdentical(t1.clone(), t2.clone()))
-                        }
+                        AtomicConstraint::Identical(t1, t2) => Constraint::Atomic(
+                            AtomicConstraint::NotIdentical(t1.clone(), t2.clone()),
+                        ),
                         AtomicConstraint::NotIdentical(t1, t2) => {
                             Constraint::Atomic(AtomicConstraint::Identical(t1.clone(), t2.clone()))
                         }
@@ -379,7 +371,7 @@ fn is_de_morgan_contradiction(conj: &Constraint, disj: &Constraint) -> bool {
     collect_conjuncts(conj, &mut conjuncts);
 
     // Check if disj is an Or where each branch contradicts a conjunct
-    if let Constraint::Or(or_left, or_right) = disj {
+    if let Constraint::Or(_or_left, _or_right) = disj {
         // Check if the Or branches negate the conjuncts
         let branches = collect_or_branches(disj);
 
@@ -426,12 +418,12 @@ fn collect_or_branches_rec<'a>(c: &'a Constraint, result: &mut Vec<&'a Constrain
 /// Check if two atomic constraints are contradictions.
 fn are_atomic_contradictions(a1: &AtomicConstraint, a2: &AtomicConstraint) -> bool {
     match (a1, a2) {
-        (AtomicConstraint::Identical(t1, t2), AtomicConstraint::NotIdentical(t3, t4)) |
-        (AtomicConstraint::NotIdentical(t3, t4), AtomicConstraint::Identical(t1, t2)) => {
+        (AtomicConstraint::Identical(t1, t2), AtomicConstraint::NotIdentical(t3, t4))
+        | (AtomicConstraint::NotIdentical(t3, t4), AtomicConstraint::Identical(t1, t2)) => {
             (t1 == t3 && t2 == t4) || (t1 == t4 && t2 == t3)
         }
-        (AtomicConstraint::RootEquals(t1, s1), AtomicConstraint::RootNotEquals(t2, s2)) |
-        (AtomicConstraint::RootNotEquals(t2, s2), AtomicConstraint::RootEquals(t1, s1)) => {
+        (AtomicConstraint::RootEquals(t1, s1), AtomicConstraint::RootNotEquals(t2, s2))
+        | (AtomicConstraint::RootNotEquals(t2, s2), AtomicConstraint::RootEquals(t1, s1)) => {
             t1 == t2 && s1 == s2
         }
         _ => false,
@@ -446,7 +438,7 @@ fn check_and_for_contradictions(left: &Constraint, right: &Constraint) -> bool {
 
     // Check all pairs for contradictions
     for i in 0..conjuncts.len() {
-        for j in (i+1)..conjuncts.len() {
+        for j in (i + 1)..conjuncts.len() {
             if is_simple_contradiction(conjuncts[i], conjuncts[j]) {
                 return true;
             }
@@ -488,7 +480,9 @@ fn is_simple_contradiction(c1: &Constraint, c2: &Constraint) -> bool {
                     }
                     false
                 }
-                (Constraint::Atomic(a1), Constraint::Atomic(a2)) => are_atomic_contradictions(a1, a2),
+                (Constraint::Atomic(a1), Constraint::Atomic(a2)) => {
+                    are_atomic_contradictions(a1, a2)
+                }
                 _ => false,
             }
         }
@@ -568,8 +562,8 @@ fn atomic_is_always_true(atomic: &AtomicConstraint) -> bool {
 /// This function extracts all `Identical(Var, Term)` constraints and uses them
 /// to substitute into RootEquals/RootNotEquals constraints, enabling evaluation.
 fn propagate_identities(c: &Constraint) -> Constraint {
-    use std::collections::HashMap;
     use crate::syntax::{Term, Var};
+    use std::collections::HashMap;
 
     // Collect all Identical(Var, Term) constraints
     let mut bindings: HashMap<Var, Term> = HashMap::new();
@@ -584,7 +578,10 @@ fn propagate_identities(c: &Constraint) -> Constraint {
 }
 
 /// Collect all Identical(Var, Term) bindings from a constraint.
-fn collect_identity_bindings(c: &Constraint, bindings: &mut std::collections::HashMap<crate::syntax::Var, crate::syntax::Term>) {
+fn collect_identity_bindings(
+    c: &Constraint,
+    bindings: &mut std::collections::HashMap<crate::syntax::Var, crate::syntax::Term>,
+) {
     match c {
         Constraint::Atomic(AtomicConstraint::Identical(t1, t2)) => {
             // If t1 is a variable and t2 is not, bind t1 -> t2
@@ -662,15 +659,21 @@ fn apply_bindings_to_term(
     bindings: &std::collections::HashMap<crate::syntax::Var, crate::syntax::Term>,
 ) -> crate::syntax::Term {
     match term {
-        crate::syntax::Term::Var(v) => {
-            bindings.get(v).cloned().unwrap_or_else(|| term.clone())
-        }
+        crate::syntax::Term::Var(v) => bindings.get(v).cloned().unwrap_or_else(|| term.clone()),
         crate::syntax::Term::App(sym, args) => crate::syntax::Term::App(
             sym.clone(),
             args.iter()
                 .map(|a| apply_bindings_to_term(a, bindings))
                 .collect(),
         ),
+    }
+}
+
+impl Not for Constraint {
+    type Output = Constraint;
+
+    fn not(self) -> Constraint {
+        Constraint::Not(Box::new(self))
     }
 }
 
@@ -708,19 +711,23 @@ mod tests {
         );
         assert_eq!(Constraint::True.or(c.clone()).simplify(), Constraint::True);
         assert_eq!(Constraint::False.or(c.clone()).simplify(), c);
-        assert_eq!(Constraint::True.not().simplify(), Constraint::False);
-        assert_eq!(Constraint::False.not().simplify(), Constraint::True);
+        assert_eq!((!Constraint::True).simplify(), Constraint::False);
+        assert_eq!((!Constraint::False).simplify(), Constraint::True);
     }
 
     #[test]
     fn test_root_equals_notequals_contradiction() {
         let x = Term::var("x");
         let root_eq = Constraint::Atomic(AtomicConstraint::RootEquals(x.clone(), "f".to_string()));
-        let root_neq = Constraint::Atomic(AtomicConstraint::RootNotEquals(x.clone(), "f".to_string()));
+        let root_neq =
+            Constraint::Atomic(AtomicConstraint::RootNotEquals(x.clone(), "f".to_string()));
 
         // RootEquals(x,f) ∧ RootNotEquals(x,f) should be unsatisfiable
         let conj = root_eq.clone().and(root_neq.clone());
-        assert!(!conj.is_satisfiable(), "RootEquals and RootNotEquals on same var/symbol should contradict");
+        assert!(
+            !conj.is_satisfiable(),
+            "RootEquals and RootNotEquals on same var/symbol should contradict"
+        );
     }
 
     #[test]
@@ -738,7 +745,10 @@ mod tests {
         let coverage = a.clone().and(b.clone()).or(not_a.clone().or(not_b.clone()));
 
         // missing = ¬coverage should be unsatisfiable
-        let missing = coverage.not();
-        assert!(!missing.is_satisfiable(), "negation of A ∨ ¬A form should be unsatisfiable");
+        let missing = !coverage;
+        assert!(
+            !missing.is_satisfiable(),
+            "negation of A ∨ ¬A form should be unsatisfiable"
+        );
     }
 }

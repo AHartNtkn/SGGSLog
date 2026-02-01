@@ -1,6 +1,6 @@
 //! REPL implementation.
 
-use crate::parser::{parse_file, Directive, Setting, Statement};
+use crate::parser::{parse_file, Setting, Statement};
 use crate::session::{DirectiveResult, ExecResult, Session, SessionError};
 use crate::sggs::QueryResult;
 use std::io::{self, BufRead, Write};
@@ -40,7 +40,9 @@ impl Repl {
 
     /// Load a file into the REPL.
     pub fn load_file(&mut self, path: &str) -> Result<(), ReplError> {
-        self.session.load_file(path).map_err(|e| ReplError { message: e.message })?;
+        self.session
+            .load_file(path)
+            .map_err(|e| ReplError { message: e.message })?;
         Ok(())
     }
 
@@ -57,8 +59,9 @@ impl Repl {
         }
 
         // Parse and execute the statement
-        let stmts = parse_file(line)
-            .map_err(|e| ReplError { message: format!("Parse error: {}", e) })?;
+        let stmts = parse_file(line).map_err(|e| ReplError {
+            message: format!("Parse error: {}", e),
+        })?;
 
         if stmts.is_empty() {
             return Ok(String::new());
@@ -82,26 +85,24 @@ impl Repl {
         let args = parts.get(1).map(|s| s.trim()).unwrap_or("");
 
         match cmd {
-            "quit" | "q" | "exit" => {
-                Ok("Goodbye!".to_string())
-            }
+            "quit" | "q" | "exit" => Ok("Goodbye!".to_string()),
             "next" | "n" => {
                 let result = self.session.next_answer()?;
                 Ok(format_query_result(&result))
             }
-            "set" => {
-                self.process_set_directive(args)
-            }
+            "set" => self.process_set_directive(args),
             "load" | "l" => {
                 if args.is_empty() {
-                    return Err(ReplError { message: "Usage: :load <filename>".to_string() });
+                    return Err(ReplError {
+                        message: "Usage: :load <filename>".to_string(),
+                    });
                 }
                 let result = self.session.load_file(args)?;
                 Ok(format_directive_result(&result))
             }
-            _ => {
-                Err(ReplError { message: format!("Unknown command: {}", cmd) })
-            }
+            _ => Err(ReplError {
+                message: format!("Unknown command: {}", cmd),
+            }),
         }
     }
 
@@ -109,15 +110,18 @@ impl Repl {
     fn process_set_directive(&mut self, args: &str) -> Result<String, ReplError> {
         let parts: Vec<&str> = args.splitn(2, ' ').collect();
         if parts.len() < 2 {
-            return Err(ReplError { message: "Usage: :set <key> <value>".to_string() });
+            return Err(ReplError {
+                message: "Usage: :set <key> <value>".to_string(),
+            });
         }
         let key = parts[0].trim();
         let value = parts[1].trim();
 
         let setting = match key {
             "timeout_ms" | "timeout" => {
-                let ms = value.parse::<u64>()
-                    .map_err(|_| ReplError { message: format!("Invalid timeout value: {}", value) })?;
+                let ms = value.parse::<u64>().map_err(|_| ReplError {
+                    message: format!("Invalid timeout value: {}", value),
+                })?;
                 Setting::TimeoutMs(ms)
             }
             "projection" => {
@@ -136,7 +140,10 @@ impl Repl {
                 };
                 Setting::Projection(proj)
             }
-            _ => Setting::Unknown { key: key.to_string(), value: value.to_string() },
+            _ => Setting::Unknown {
+                key: key.to_string(),
+                value: value.to_string(),
+            },
         };
 
         let result = self.session.apply_setting(setting)?;
@@ -159,13 +166,19 @@ impl Repl {
 
         loop {
             print!("?- ");
-            stdout.flush().map_err(|e| ReplError { message: e.to_string() })?;
+            stdout.flush().map_err(|e| ReplError {
+                message: e.to_string(),
+            })?;
 
             let mut line = String::new();
             match stdin.lock().read_line(&mut line) {
                 Ok(0) => break, // EOF
                 Ok(_) => {}
-                Err(e) => return Err(ReplError { message: e.to_string() }),
+                Err(e) => {
+                    return Err(ReplError {
+                        message: e.to_string(),
+                    })
+                }
             }
 
             let line = line.trim();
@@ -197,10 +210,11 @@ fn format_query_result(result: &QueryResult) -> String {
             if subst.is_empty() {
                 "true.".to_string()
             } else {
-                let bindings: Vec<String> = subst.bindings()
+                let bindings: Vec<String> = subst
+                    .bindings()
                     .map(|(v, t)| format!("{} = {}", v.name(), t))
                     .collect();
-                format!("{}", bindings.join(", "))
+                bindings.join(", ").to_string()
             }
         }
         QueryResult::Exhausted => "no (more) answers.".to_string(),
@@ -316,7 +330,9 @@ mod tests {
     #[test]
     fn test_repl_next_without_query_errors() {
         let mut repl = Repl::new();
-        let err = repl.process_line(":next").expect_err("expected error on :next");
+        let err = repl
+            .process_line(":next")
+            .expect_err("expected error on :next");
         assert!(!err.message.is_empty());
     }
 }

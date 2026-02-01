@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use super::Trail;
-use crate::syntax::Literal;
 
 /// Assignment mapping from (clause index, literal index) to justifying clause index.
 #[derive(Debug, Clone, Default)]
@@ -50,7 +49,9 @@ pub fn compute_assignments(trail: &Trail) -> Assignments {
                 // that appears earlier in the trail
                 let negated = lit.negated();
 
-                for (earlier_idx, earlier_clause) in trail.clauses()[..clause_idx].iter().enumerate() {
+                for (earlier_idx, earlier_clause) in
+                    trail.clauses()[..clause_idx].iter().enumerate()
+                {
                     let selected = earlier_clause.selected_literal();
 
                     // Selected must be I-false
@@ -59,12 +60,12 @@ pub fn compute_assignments(trail: &Trail) -> Assignments {
                     }
 
                     // Check if the negated literal unifies with the selected literal
-                    if negated.positive == selected.positive &&
-                       negated.atom.predicate == selected.atom.predicate {
-                        if crate::unify::unify_literals(&negated, selected).is_success() {
-                            map.insert((clause_idx, lit_idx), earlier_idx);
-                            break;
-                        }
+                    if negated.positive == selected.positive
+                        && negated.atom.predicate == selected.atom.predicate
+                        && crate::unify::unify_literals(&negated, selected).is_success()
+                    {
+                        map.insert((clause_idx, lit_idx), earlier_idx);
+                        break;
                     }
                 }
             }
@@ -72,9 +73,4 @@ pub fn compute_assignments(trail: &Trail) -> Assignments {
     }
 
     Assignments::new(map)
-}
-
-/// Utility: find the literal index of a literal in a clause.
-pub fn literal_index(clause: &[Literal], lit: &Literal) -> Option<usize> {
-    clause.iter().position(|l| l == lit)
 }

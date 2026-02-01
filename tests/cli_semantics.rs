@@ -75,10 +75,7 @@ fn cli_load_query_stream_and_exhaustion() {
 #[test]
 fn cli_projection_toggle_changes_visibility() {
     let path = write_temp_file("sggslog_cli_proj", "\u{2203}X (p X)\n");
-    let input_default = format!(
-        ":load \"{}\"\n?- p X\n:quit\n",
-        path.to_string_lossy()
-    );
+    let input_default = format!(":load \"{}\"\n?- p X\n:quit\n", path.to_string_lossy());
     let output_default = run_cli(&input_default);
     assert!(
         contains_any(

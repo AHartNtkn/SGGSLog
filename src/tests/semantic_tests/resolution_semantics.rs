@@ -90,8 +90,7 @@ fn resolution_uses_conflict_constraint_when_entails_justification() {
     match sggs_resolution(&conflict, &trail) {
         ResolutionResult::Resolvent(res) => {
             assert_eq!(res.constraint, constraint_a);
-            let lits: std::collections::HashSet<_> =
-                res.clause.literals.iter().cloned().collect();
+            let lits: std::collections::HashSet<_> = res.clause.literals.iter().cloned().collect();
             let expected: std::collections::HashSet<_> = vec![
                 Literal::pos("R", vec![a.clone()]),
                 Literal::pos("S", vec![a.clone()]),

@@ -1,8 +1,8 @@
+use proptest::prelude::*;
 use sggslog::normalize::{clausify_formula, clausify_statements};
 use sggslog::parser::{parse_file, Statement};
 use sggslog::syntax::{Atom, Clause, Formula, Literal, Query, Term};
 use std::collections::HashMap;
-use proptest::prelude::*;
 
 fn single_formula(src: &str) -> sggslog::syntax::Formula {
     let stmts = parse_file(src).expect("parse_file failed");
@@ -178,7 +178,7 @@ fn literal_to_formula_propositional(lit: &Literal) -> Formula {
     if lit.positive {
         atom
     } else {
-        Formula::not(atom)
+        Formula::negation(atom)
     }
 }
 
@@ -229,10 +229,8 @@ fn arb_formula(depth: u32) -> impl Strategy<Value = Formula> {
         prop_oneof![
             arb_pred().prop_map(|p| Formula::atom(Atom::prop(p.as_str()))),
             arb_formula(depth - 1).prop_map(Formula::not),
-            (arb_formula(depth - 1), arb_formula(depth - 1))
-                .prop_map(|(a, b)| Formula::and(a, b)),
-            (arb_formula(depth - 1), arb_formula(depth - 1))
-                .prop_map(|(a, b)| Formula::or(a, b)),
+            (arb_formula(depth - 1), arb_formula(depth - 1)).prop_map(|(a, b)| Formula::and(a, b)),
+            (arb_formula(depth - 1), arb_formula(depth - 1)).prop_map(|(a, b)| Formula::or(a, b)),
             (arb_formula(depth - 1), arb_formula(depth - 1))
                 .prop_map(|(a, b)| Formula::implies(a, b)),
         ]

@@ -1,6 +1,6 @@
 //! Initial interpretation for SGGS semantic guidance.
 
-use crate::syntax::{Atom, Clause, Literal, Term};
+use crate::syntax::{Atom, Clause, Literal};
 use crate::unify::Substitution;
 use std::collections::HashSet;
 
@@ -17,11 +17,12 @@ pub enum TruthValue {
 /// SGGS is semantically guided: an initial interpretation I determines
 /// which literals are "I-true" vs "I-false". This guides literal selection
 /// and the direction of model construction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum InitialInterpretation {
     /// I⁺: All atoms are true (all positive literals true, negative false)
     AllPositive,
     /// I⁻: All atoms are false (all positive literals false, negative true)
+    #[default]
     AllNegative,
     /// Explicit interpretation with designated true/false atoms; others are Unknown by default.
     Explicit {
@@ -29,12 +30,6 @@ pub enum InitialInterpretation {
         false_atoms: HashSet<Atom>,
         default: TruthValue,
     },
-}
-
-impl Default for InitialInterpretation {
-    fn default() -> Self {
-        InitialInterpretation::AllNegative
-    }
 }
 
 impl InitialInterpretation {
@@ -61,7 +56,11 @@ impl InitialInterpretation {
                     TruthValue::True
                 }
             }
-            InitialInterpretation::Explicit { true_atoms, false_atoms, default } => {
+            InitialInterpretation::Explicit {
+                true_atoms,
+                false_atoms,
+                default,
+            } => {
                 // Check if the atom is in true_atoms or false_atoms
                 let atom = &lit.atom;
                 if true_atoms.contains(atom) {
@@ -117,7 +116,11 @@ impl InitialInterpretation {
         match self {
             InitialInterpretation::AllPositive => true,
             InitialInterpretation::AllNegative => false,
-            InitialInterpretation::Explicit { true_atoms, false_atoms, default } => {
+            InitialInterpretation::Explicit {
+                true_atoms,
+                false_atoms,
+                default,
+            } => {
                 if true_atoms.contains(atom) {
                     true
                 } else if false_atoms.contains(atom) {
@@ -169,7 +172,11 @@ impl InitialInterpretation {
                     None
                 }
             }
-            InitialInterpretation::Explicit { true_atoms, false_atoms, default } => {
+            InitialInterpretation::Explicit {
+                true_atoms,
+                false_atoms,
+                default,
+            } => {
                 // For explicit interpretation, we need all literals to be ground and false.
                 // If any literal's truth is Unknown, we cannot determine a falsifier.
                 for lit in &clause.literals {
@@ -188,18 +195,26 @@ impl InitialInterpretation {
 
                     let lit_truth = match atom_truth {
                         TruthValue::True => {
-                            if lit.positive { TruthValue::True } else { TruthValue::False }
+                            if lit.positive {
+                                TruthValue::True
+                            } else {
+                                TruthValue::False
+                            }
                         }
                         TruthValue::False => {
-                            if lit.positive { TruthValue::False } else { TruthValue::True }
+                            if lit.positive {
+                                TruthValue::False
+                            } else {
+                                TruthValue::True
+                            }
                         }
                         TruthValue::Unknown => TruthValue::Unknown,
                     };
 
                     match lit_truth {
-                        TruthValue::True => return None, // Clause is satisfied
+                        TruthValue::True => return None,    // Clause is satisfied
                         TruthValue::Unknown => return None, // Cannot determine
-                        TruthValue::False => continue, // This literal is false, check others
+                        TruthValue::False => continue,      // This literal is false, check others
                     }
                 }
                 // All literals are false under this interpretation

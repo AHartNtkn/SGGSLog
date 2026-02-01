@@ -30,8 +30,9 @@ impl Kernel {
         }
 
         // Parse and execute the statements
-        let stmts = parse_file(code)
-            .map_err(|e| KernelError { message: format!("Parse error: {}", e) })?;
+        let stmts = parse_file(code).map_err(|e| KernelError {
+            message: format!("Parse error: {}", e),
+        })?;
 
         if stmts.is_empty() {
             return Ok(String::new());
@@ -59,21 +60,21 @@ impl Kernel {
                 let result = self.session.next_answer()?;
                 Ok(format_query_result(&result))
             }
-            "set" => {
-                self.process_set_directive(args)
-            }
+            "set" => self.process_set_directive(args),
             "load" | "l" => {
                 if args.is_empty() {
-                    return Err(KernelError { message: "Usage: :load <filename>".to_string() });
+                    return Err(KernelError {
+                        message: "Usage: :load <filename>".to_string(),
+                    });
                 }
                 // Remove quotes if present
                 let path = args.trim_matches('"').trim_matches('\'');
                 let result = self.session.load_file(path)?;
                 Ok(format_directive_result(&result))
             }
-            _ => {
-                Err(KernelError { message: format!("Unknown command: {}", cmd) })
-            }
+            _ => Err(KernelError {
+                message: format!("Unknown command: {}", cmd),
+            }),
         }
     }
 
@@ -81,15 +82,18 @@ impl Kernel {
     fn process_set_directive(&mut self, args: &str) -> Result<String, KernelError> {
         let parts: Vec<&str> = args.splitn(2, ' ').collect();
         if parts.len() < 2 {
-            return Err(KernelError { message: "Usage: :set <key> <value>".to_string() });
+            return Err(KernelError {
+                message: "Usage: :set <key> <value>".to_string(),
+            });
         }
         let key = parts[0].trim();
         let value = parts[1].trim();
 
         let setting = match key {
             "timeout_ms" | "timeout" => {
-                let ms = value.parse::<u64>()
-                    .map_err(|_| KernelError { message: format!("Invalid timeout value: {}", value) })?;
+                let ms = value.parse::<u64>().map_err(|_| KernelError {
+                    message: format!("Invalid timeout value: {}", value),
+                })?;
                 Setting::TimeoutMs(ms)
             }
             "projection" => {
@@ -108,7 +112,10 @@ impl Kernel {
                 };
                 Setting::Projection(proj)
             }
-            _ => Setting::Unknown { key: key.to_string(), value: value.to_string() },
+            _ => Setting::Unknown {
+                key: key.to_string(),
+                value: value.to_string(),
+            },
         };
 
         let result = self.session.apply_setting(setting)?;
@@ -135,10 +142,11 @@ fn format_query_result(result: &QueryResult) -> String {
             if subst.is_empty() {
                 "true.".to_string()
             } else {
-                let bindings: Vec<String> = subst.bindings()
+                let bindings: Vec<String> = subst
+                    .bindings()
                     .map(|(v, t)| format!("{} = {}", v.name(), t))
                     .collect();
-                format!("{}", bindings.join(", "))
+                bindings.join(", ").to_string()
             }
         }
         QueryResult::Exhausted => "no answers.".to_string(),

@@ -54,7 +54,7 @@ fn constraint_entails(
     b: &crate::constraint::Constraint,
     sigma: &Substitution,
 ) -> bool {
-    use crate::constraint::{AtomicConstraint, Constraint};
+    use crate::constraint::Constraint;
 
     // Apply substitution to b and simplify
     let b_sigma = apply_subst_to_constraint(b, sigma);
@@ -106,7 +106,7 @@ fn constraint_entails(
     }
 
     // General case: A |= Bσ iff A ∧ ¬Bσ is unsatisfiable
-    let a_and_not_b = a.clone().and(b_simplified.not());
+    let a_and_not_b = a.clone().and(!b_simplified);
     !a_and_not_b.is_satisfiable()
 }
 
@@ -130,7 +130,7 @@ fn constraint_entails_simple(
         return true;
     }
 
-    let a_and_not_b = a.clone().and(b.clone().not());
+    let a_and_not_b = a.clone().and(!b.clone());
     !a_and_not_b.is_satisfiable()
 }
 
@@ -139,17 +139,19 @@ fn apply_subst_to_constraint(
     c: &crate::constraint::Constraint,
     sigma: &Substitution,
 ) -> crate::constraint::Constraint {
-    use crate::constraint::{AtomicConstraint, Constraint};
+    use crate::constraint::Constraint;
 
     match c {
         Constraint::True => Constraint::True,
         Constraint::False => Constraint::False,
         Constraint::Atomic(a) => Constraint::Atomic(apply_subst_to_atomic(a, sigma)),
-        Constraint::And(left, right) => apply_subst_to_constraint(left, sigma)
-            .and(apply_subst_to_constraint(right, sigma)),
-        Constraint::Or(left, right) => apply_subst_to_constraint(left, sigma)
-            .or(apply_subst_to_constraint(right, sigma)),
-        Constraint::Not(inner) => apply_subst_to_constraint(inner, sigma).not(),
+        Constraint::And(left, right) => {
+            apply_subst_to_constraint(left, sigma).and(apply_subst_to_constraint(right, sigma))
+        }
+        Constraint::Or(left, right) => {
+            apply_subst_to_constraint(left, sigma).or(apply_subst_to_constraint(right, sigma))
+        }
+        Constraint::Not(inner) => !apply_subst_to_constraint(inner, sigma),
     }
 }
 
@@ -159,7 +161,6 @@ fn apply_subst_to_atomic(
     sigma: &Substitution,
 ) -> crate::constraint::AtomicConstraint {
     use crate::constraint::AtomicConstraint;
-    use crate::syntax::Term;
 
     match a {
         AtomicConstraint::Identical(t1, t2) => {
@@ -178,55 +179,51 @@ fn apply_subst_to_atomic(
 }
 
 /// Simplify a constraint after substitution by evaluating trivial conditions.
-fn simplify_constraint_after_subst(c: &crate::constraint::Constraint) -> crate::constraint::Constraint {
+fn simplify_constraint_after_subst(
+    c: &crate::constraint::Constraint,
+) -> crate::constraint::Constraint {
     use crate::constraint::{AtomicConstraint, Constraint};
     use crate::syntax::Term;
 
     match c {
         Constraint::True => Constraint::True,
         Constraint::False => Constraint::False,
-        Constraint::Atomic(a) => {
-            match a {
-                AtomicConstraint::Identical(t1, t2) => {
-                    if t1 == t2 {
-                        Constraint::True
-                    } else {
-                        Constraint::Atomic(a.clone())
-                    }
-                }
-                AtomicConstraint::NotIdentical(t1, t2) => {
-                    if t1 == t2 {
-                        Constraint::False
-                    } else {
-                        Constraint::Atomic(a.clone())
-                    }
-                }
-                AtomicConstraint::RootEquals(t, expected) => {
-                    match t {
-                        Term::App(sym, _) => {
-                            if &sym.name == expected {
-                                Constraint::True
-                            } else {
-                                Constraint::False
-                            }
-                        }
-                        Term::Var(_) => Constraint::Atomic(a.clone()),
-                    }
-                }
-                AtomicConstraint::RootNotEquals(t, expected) => {
-                    match t {
-                        Term::App(sym, _) => {
-                            if &sym.name == expected {
-                                Constraint::False
-                            } else {
-                                Constraint::True
-                            }
-                        }
-                        Term::Var(_) => Constraint::Atomic(a.clone()),
-                    }
+        Constraint::Atomic(a) => match a {
+            AtomicConstraint::Identical(t1, t2) => {
+                if t1 == t2 {
+                    Constraint::True
+                } else {
+                    Constraint::Atomic(a.clone())
                 }
             }
-        }
+            AtomicConstraint::NotIdentical(t1, t2) => {
+                if t1 == t2 {
+                    Constraint::False
+                } else {
+                    Constraint::Atomic(a.clone())
+                }
+            }
+            AtomicConstraint::RootEquals(t, expected) => match t {
+                Term::App(sym, _) => {
+                    if &sym.name == expected {
+                        Constraint::True
+                    } else {
+                        Constraint::False
+                    }
+                }
+                Term::Var(_) => Constraint::Atomic(a.clone()),
+            },
+            AtomicConstraint::RootNotEquals(t, expected) => match t {
+                Term::App(sym, _) => {
+                    if &sym.name == expected {
+                        Constraint::False
+                    } else {
+                        Constraint::True
+                    }
+                }
+                Term::Var(_) => Constraint::Atomic(a.clone()),
+            },
+        },
         Constraint::And(left, right) => {
             let left_simp = simplify_constraint_after_subst(left);
             let right_simp = simplify_constraint_after_subst(right);
@@ -252,7 +249,7 @@ fn simplify_constraint_after_subst(c: &crate::constraint::Constraint) -> crate::
             match inner_simp {
                 Constraint::True => Constraint::False,
                 Constraint::False => Constraint::True,
-                other => other.not(),
+                other => !other,
             }
         }
     }
@@ -307,7 +304,11 @@ fn is_uniformly_false_in_trail(lit: &crate::syntax::Literal, trail: &Trail) -> b
 ///
 /// A clause is a conflict clause if all its literals are uniformly false in I[Γ].
 fn is_conflict_clause(clause: &ConstrainedClause, trail: &Trail) -> bool {
-    clause.clause.literals.iter().all(|lit| is_uniformly_false_in_trail(lit, trail))
+    clause
+        .clause
+        .literals
+        .iter()
+        .all(|lit| is_uniformly_false_in_trail(lit, trail))
 }
 
 /// SGGS-Resolution: resolve conflict clause with justifications.

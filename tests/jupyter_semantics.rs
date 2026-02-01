@@ -93,9 +93,7 @@ fn kernel_projection_toggle_changes_visibility() {
 #[test]
 fn kernel_respects_resource_limit() {
     let mut kernel = Kernel::new();
-    let _ = kernel
-        .execute(":set timeout_ms 0")
-        .expect("set timeout_ms");
+    let _ = kernel.execute(":set timeout_ms 0").expect("set timeout_ms");
     let r = kernel.execute("?- p X").expect("query failed");
     assert!(
         contains_any(&r, &["resource", "limit", "timeout"]),

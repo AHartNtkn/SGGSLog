@@ -14,6 +14,7 @@ mod resolution;
 mod splitting;
 mod trail;
 
+pub use crate::syntax::Query;
 pub use assignment::{compute_assignments, Assignments};
 pub use constrained::ConstrainedClause;
 pub use deletion::{is_disposable, sggs_deletion};
@@ -27,7 +28,6 @@ pub use interpretation::{InitialInterpretation, TruthValue};
 pub use left_split::sggs_left_split;
 pub use move_op::{sggs_move, MoveError};
 pub use query::{answer_query, answer_query_projected, ProjectionPolicy, QueryResult, QueryStream};
-pub use crate::syntax::Query;
 pub use resolution::{sggs_resolution, ResolutionResult};
 pub use splitting::{sggs_splitting, sggs_splitting_on, SplitResult};
 pub use trail::{PartialInterpretation, Trail, TrailError, TrailInterpretation};

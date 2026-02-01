@@ -6,8 +6,8 @@ use super::*;
 
 use crate::parser::{Directive, Statement};
 use crate::session::DirectiveResult;
-use crate::sggs::{answer_query, Query};
 use crate::session::{ExecResult, Session};
+use crate::sggs::{answer_query, Query};
 use crate::syntax::{Atom, Formula};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,8 +19,7 @@ fn term_uses_only_symbols(term: &Term, allowed: &crate::syntax::Signature) -> bo
             if !allowed.contains_function(&sym.name, sym.arity) {
                 return false;
             }
-            args.iter()
-                .all(|a| term_uses_only_symbols(a, allowed))
+            args.iter().all(|a| term_uses_only_symbols(a, allowed))
         }
     }
 }
@@ -70,15 +69,13 @@ fn session_executes_query_statement() {
 fn session_query_matches_sggs_query_semantics() {
     let mut session = Session::new();
     session
-        .execute_statement(Statement::Clause(Clause::new(vec![
-            Literal::pos("p", vec![Term::constant("a")]),
-        ])))
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("a")],
+        )])))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("X")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("X")])]));
     let session_res = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -88,9 +85,12 @@ fn session_query_matches_sggs_query_semantics() {
     };
 
     let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
-    let mut stream =
-        answer_query(session.theory(), &query, crate::sggs::DerivationConfig::default());
-    let sggs_ans = match stream.next() {
+    let mut stream = answer_query(
+        session.theory(),
+        &query,
+        crate::sggs::DerivationConfig::default(),
+    );
+    let sggs_ans = match stream.next_answer() {
         crate::sggs::QueryResult::Answer(ans) => ans,
         other => panic!("expected answer from answer_query, got {:?}", other),
     };
@@ -114,19 +114,22 @@ fn session_new_query_resets_stream() {
         .execute_statement(Statement::Clause(fact))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("X")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("X")])]));
     let first = session
         .execute_statement(stmt.clone())
         .expect("execute_statement failed");
-    assert!(matches!(first, ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))));
+    assert!(matches!(
+        first,
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))
+    ));
 
     let second = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
-    assert!(matches!(second, ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))));
+    assert!(matches!(
+        second,
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))
+    ));
 }
 
 #[test]
@@ -141,10 +144,7 @@ fn session_query_dedups_answers_by_execution_time() {
         .execute_statement(Statement::Clause(fact))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("X")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("X")])]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -213,9 +213,7 @@ fn session_dedups_alpha_equivalent_sources_in_answers() {
 #[test]
 fn session_applies_set_directive() {
     let mut session = Session::new();
-    let stmt = Statement::Directive(Directive::Set(
-        crate::parser::Setting::TimeoutMs(10),
-    ));
+    let stmt = Statement::Directive(Directive::Set(crate::parser::Setting::TimeoutMs(10)));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -226,12 +224,10 @@ fn session_applies_set_directive() {
 #[test]
 fn session_sets_initial_interpretation() {
     let mut session = Session::new();
-    let stmt = Statement::Directive(Directive::Set(
-        crate::parser::Setting::Unknown {
-            key: "initial_interp".to_string(),
-            value: "positive".to_string(),
-        },
-    ));
+    let stmt = Statement::Directive(Directive::Set(crate::parser::Setting::Unknown {
+        key: "initial_interp".to_string(),
+        value: "positive".to_string(),
+    }));
     let err = session
         .execute_statement(stmt)
         .expect_err("expected initial_interp to be rejected for end-user API");
@@ -245,9 +241,9 @@ fn session_sets_initial_interpretation() {
 #[test]
 fn session_sets_projection_policy() {
     let mut session = Session::new();
-    let stmt = Statement::Directive(Directive::Set(
-        crate::parser::Setting::Projection(crate::parser::ProjectionSetting::AllowInternal),
-    ));
+    let stmt = Statement::Directive(Directive::Set(crate::parser::Setting::Projection(
+        crate::parser::ProjectionSetting::AllowInternal,
+    )));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -402,10 +398,7 @@ fn session_query_does_not_expose_internal_symbols() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("Y")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -471,10 +464,7 @@ fn session_query_without_projectable_witness_returns_no_answers() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("Y")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -512,10 +502,7 @@ fn session_query_allows_internal_symbols_when_enabled() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("Y")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");
@@ -612,7 +599,8 @@ fn session_user_signature_excludes_auxiliary_predicates() {
         .expect("load_file failed");
 
     let sig = session.user_signature().signature();
-    let names: std::collections::HashSet<_> = sig.predicates.iter().map(|p| p.name.as_str()).collect();
+    let names: std::collections::HashSet<_> =
+        sig.predicates.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names.len(), 3);
     assert!(names.contains("p"));
     assert!(names.contains("q"));
@@ -636,10 +624,7 @@ fn session_projection_allows_user_symbols_named_like_skolems() {
         .load_file(path.to_str().expect("path string"))
         .expect("load_file failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("Y")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("Y")])]));
     let result = session
         .execute_statement(stmt)
         .expect("execute_statement failed");

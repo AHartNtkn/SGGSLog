@@ -23,8 +23,9 @@ pub fn sggs_factoring(
     let other_lit = clause.clause.literals.get(other_lit_idx)?;
 
     // Must be same polarity and predicate to factor
-    if selected.positive != other_lit.positive ||
-       selected.atom.predicate != other_lit.atom.predicate {
+    if selected.positive != other_lit.positive
+        || selected.atom.predicate != other_lit.atom.predicate
+    {
         return None;
     }
 

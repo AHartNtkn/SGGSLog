@@ -123,8 +123,8 @@ fn constraint_intersection_basic() {
     let inter = c1.intersect(&c2);
     assert!(inter.is_satisfiable());
     // Intersection should entail both operands (even if simplified).
-    assert!(!inter.intersects(&c1.not()));
-    assert!(!inter.intersects(&c2.not()));
+    assert!(!inter.intersects(&(!c1.clone())));
+    assert!(!inter.intersects(&(!c2.clone())));
 }
 
 #[test]
@@ -230,7 +230,7 @@ fn constraint_and_negation_do_not_intersect() {
         Term::var("y"),
     ));
     assert!(
-        !c.intersects(&c.clone().not()),
+        !c.intersects(&(!c.clone())),
         "constraint and its negation should have empty intersection"
     );
 }

@@ -59,16 +59,12 @@ impl Substitution {
     /// Apply this substitution to a term.
     pub fn apply_to_term(&self, term: &Term) -> Term {
         match term {
-            Term::Var(var) => {
-                match self.bindings.get(var) {
-                    Some(t) => t.clone(),
-                    None => term.clone(),
-                }
-            }
+            Term::Var(var) => match self.bindings.get(var) {
+                Some(t) => t.clone(),
+                None => term.clone(),
+            },
             Term::App(fn_sym, args) => {
-                let new_args: Vec<Term> = args.iter()
-                    .map(|arg| self.apply_to_term(arg))
-                    .collect();
+                let new_args: Vec<Term> = args.iter().map(|arg| self.apply_to_term(arg)).collect();
                 Term::App(fn_sym.clone(), new_args)
             }
         }

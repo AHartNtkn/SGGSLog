@@ -62,10 +62,6 @@ impl<'a> Parser<'a> {
         Ok(old)
     }
 
-    fn peek(&self) -> &Token {
-        &self.current
-    }
-
     fn expect(&mut self, expected: Token) -> Result<(), ParseError> {
         if self.current == expected {
             self.advance()?;
@@ -81,14 +77,6 @@ impl<'a> Parser<'a> {
             line: self.line,
             column: self.column,
             span: None,
-        }
-    }
-
-    fn at_statement_boundary(&self) -> bool {
-        match &self.current {
-            Token::Eof | Token::Colon | Token::Query => true,
-            Token::Identifier(s) if s == "clause" => true,
-            _ => false,
         }
     }
 }
@@ -158,7 +146,9 @@ fn parse_directive(parser: &mut Parser) -> Result<Statement, ParseError> {
                             parser.advance()?;
                             k
                         }
-                        _ => return Err(parser.error("expected setting name after :set".to_string())),
+                        _ => {
+                            return Err(parser.error("expected setting name after :set".to_string()))
+                        }
                     };
 
                     // Parse setting value
@@ -169,17 +159,16 @@ fn parse_directive(parser: &mut Parser) -> Result<Statement, ParseError> {
                             v
                         }
                         _ => {
-                            return Err(
-                                parser.error("expected setting value after setting name".to_string())
-                            )
+                            return Err(parser
+                                .error("expected setting value after setting name".to_string()))
                         }
                     };
 
                     let setting = match key.as_str() {
                         "timeout_ms" => {
-                            let ms = value.parse::<u64>().map_err(|_| {
-                                parser.error("invalid timeout value".to_string())
-                            })?;
+                            let ms = value
+                                .parse::<u64>()
+                                .map_err(|_| parser.error("invalid timeout value".to_string()))?;
                             Setting::TimeoutMs(ms)
                         }
                         "projection" => match value.as_str() {
@@ -340,7 +329,7 @@ fn parse_unary(parser: &mut Parser) -> Result<Formula, ParseError> {
         Token::Not => {
             parser.advance()?;
             let inner = parse_unary(parser)?;
-            Ok(Formula::not(inner))
+            Ok(Formula::negation(inner))
         }
         Token::Forall => {
             parser.advance()?;
@@ -516,7 +505,9 @@ fn parse_term(parser: &mut Parser) -> Result<Term, ParseError> {
                                 parser.advance()?;
                                 Some(s)
                             }
-                            _ => return Err(parser.error("expected sort name after ':'".to_string())),
+                            _ => {
+                                return Err(parser.error("expected sort name after ':'".to_string()))
+                            }
                         }
                     } else {
                         None

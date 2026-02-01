@@ -28,12 +28,6 @@ impl SkolemGen {
         SkolemGen { counter: 0 }
     }
 
-    fn fresh(&mut self, sort: Option<&str>) -> String {
-        let name = format!("$sk{}", self.counter);
-        self.counter += 1;
-        name
-    }
-
     fn fresh_with_sort(&mut self, sort: Option<&str>) -> (String, Option<String>) {
         let name = format!("$sk{}", self.counter);
         self.counter += 1;
@@ -76,7 +70,7 @@ fn clausify_formula_with_skolem(
 fn eliminate_implications(formula: &Formula) -> Formula {
     match formula {
         Formula::Atom(atom) => Formula::Atom(atom.clone()),
-        Formula::Not(inner) => Formula::not(eliminate_implications(inner)),
+        Formula::Not(inner) => Formula::negation(eliminate_implications(inner)),
         Formula::And(left, right) => {
             Formula::and(eliminate_implications(left), eliminate_implications(right))
         }
@@ -86,7 +80,7 @@ fn eliminate_implications(formula: &Formula) -> Formula {
         Formula::Implies(left, right) => {
             // p → q ≡ ¬p ∨ q
             Formula::or(
-                Formula::not(eliminate_implications(left)),
+                Formula::negation(eliminate_implications(left)),
                 eliminate_implications(right),
             )
         }
@@ -154,7 +148,9 @@ fn skolemize(
                 .collect();
             Formula::Atom(crate::syntax::Atom::new(atom.predicate.clone(), args))
         }
-        Formula::Not(inner) => Formula::not(skolemize(inner, universal_vars, skolem_gen, var_mapping)),
+        Formula::Not(inner) => {
+            Formula::negation(skolemize(inner, universal_vars, skolem_gen, var_mapping))
+        }
         Formula::And(left, right) => Formula::and(
             skolemize(left, universal_vars, skolem_gen, var_mapping),
             skolemize(right, universal_vars, skolem_gen, var_mapping),
@@ -242,13 +238,9 @@ fn apply_var_mapping(term: &Term, var_mapping: &HashMap<String, Term>) -> Term {
 fn drop_universals(formula: &Formula) -> Formula {
     match formula {
         Formula::Atom(atom) => Formula::Atom(atom.clone()),
-        Formula::Not(inner) => Formula::not(drop_universals(inner)),
-        Formula::And(left, right) => {
-            Formula::and(drop_universals(left), drop_universals(right))
-        }
-        Formula::Or(left, right) => {
-            Formula::or(drop_universals(left), drop_universals(right))
-        }
+        Formula::Not(inner) => Formula::negation(drop_universals(inner)),
+        Formula::And(left, right) => Formula::and(drop_universals(left), drop_universals(right)),
+        Formula::Or(left, right) => Formula::or(drop_universals(left), drop_universals(right)),
         Formula::Implies(_, _) => panic!("implications should be eliminated"),
         Formula::Forall(_, body) => drop_universals(body),
         Formula::Exists(_, _) => panic!("existentials should be Skolemized"),
@@ -260,9 +252,7 @@ fn drop_universals(formula: &Formula) -> Formula {
 fn to_cnf(formula: &Formula) -> Formula {
     match formula {
         Formula::Atom(_) | Formula::Not(_) => formula.clone(),
-        Formula::And(left, right) => {
-            Formula::and(to_cnf(left), to_cnf(right))
-        }
+        Formula::And(left, right) => Formula::and(to_cnf(left), to_cnf(right)),
         Formula::Or(left, right) => {
             let left_cnf = to_cnf(left);
             let right_cnf = to_cnf(right);
@@ -280,17 +270,11 @@ fn distribute_or(left: &Formula, right: &Formula) -> Formula {
     match (left, right) {
         (Formula::And(a, b), _) => {
             // (a ∧ b) ∨ c ≡ (a ∨ c) ∧ (b ∨ c)
-            Formula::and(
-                distribute_or(a, right),
-                distribute_or(b, right),
-            )
+            Formula::and(distribute_or(a, right), distribute_or(b, right))
         }
         (_, Formula::And(a, b)) => {
             // c ∨ (a ∧ b) ≡ (c ∨ a) ∧ (c ∨ b)
-            Formula::and(
-                distribute_or(left, a),
-                distribute_or(left, b),
-            )
+            Formula::and(distribute_or(left, a), distribute_or(left, b))
         }
         _ => Formula::or(left.clone(), right.clone()),
     }
@@ -316,12 +300,10 @@ fn extract_clauses(formula: &Formula) -> Vec<Clause> {
 fn extract_literals(formula: &Formula) -> Vec<Literal> {
     match formula {
         Formula::Atom(atom) => vec![Literal::positive(atom.clone())],
-        Formula::Not(inner) => {
-            match inner.as_ref() {
-                Formula::Atom(atom) => vec![Literal::negative(atom.clone())],
-                _ => panic!("NNF should have negation only on atoms"),
-            }
-        }
+        Formula::Not(inner) => match inner.as_ref() {
+            Formula::Atom(atom) => vec![Literal::negative(atom.clone())],
+            _ => panic!("NNF should have negation only on atoms"),
+        },
         Formula::Or(left, right) => {
             let mut literals = extract_literals(left);
             literals.extend(extract_literals(right));
@@ -402,7 +384,7 @@ mod tests {
 
     #[test]
     fn test_double_negation_elimination() {
-        let formula = Formula::not(Formula::not(atom("p")));
+        let formula = Formula::negation(Formula::negation(atom("p")));
         let result = to_nnf(&formula);
         assert!(matches!(result, Formula::Atom(_)));
     }
@@ -410,7 +392,7 @@ mod tests {
     #[test]
     fn test_demorgan_or() {
         // ¬(p ∨ q) should become ¬p ∧ ¬q
-        let formula = Formula::not(Formula::or(atom("p"), atom("q")));
+        let formula = Formula::negation(Formula::or(atom("p"), atom("q")));
         let result = to_nnf(&formula);
 
         match result {

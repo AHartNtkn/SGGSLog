@@ -68,7 +68,7 @@ pub fn sggs_move(trail: &mut Trail, conflict_idx: usize) -> Result<(), MoveError
 
 /// Check if a clause is a conflict clause (all literals uniformly false in I[Γ]).
 fn is_conflict_clause(clause: &ConstrainedClause, trail: &Trail) -> bool {
-    let init_interp = trail.initial_interpretation();
+    let _init_interp = trail.initial_interpretation();
     let trail_interp = trail.interpretation();
 
     for lit in &clause.clause.literals {

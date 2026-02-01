@@ -71,10 +71,11 @@ pub fn sggs_extension(trail: &Trail, theory: &Theory) -> ExtensionResult {
             .collect();
 
         // Try to find side premises for I-true literals
-        let side_premise_result = match find_side_premises(trail, input_clause, &i_true_indices, dp_len) {
-            Some(result) => result,
-            None => continue,
-        };
+        let side_premise_result =
+            match find_side_premises(trail, input_clause, &i_true_indices, dp_len) {
+                Some(result) => result,
+                None => continue,
+            };
         let alpha = side_premise_result.substitution;
         let constraint = side_premise_result.constraint;
         let side_premise_predicates = side_premise_result.side_premise_predicates;
@@ -117,7 +118,9 @@ pub fn sggs_extension(trail: &Trail, theory: &Theory) -> ExtensionResult {
         // by an I-all-true clause in dp(Γ) that should be replaced.
         // The blocker must be on a DIFFERENT predicate than the side premises,
         // otherwise it's a true conflict (not replaceable).
-        if let Some(blocker_idx) = find_blocking_clause(trail, &extended_clause, dp_len, &side_premise_predicates) {
+        if let Some(blocker_idx) =
+            find_blocking_clause(trail, &extended_clause, dp_len, &side_premise_predicates)
+        {
             return ExtensionResult::Critical {
                 replace_index: blocker_idx,
                 clause: extended_clause,
@@ -172,8 +175,8 @@ fn find_side_premises(
         let complement = i_true_lit.negated();
 
         let mut found = false;
-        for premise_idx in 0..dp_len {
-            if used_premises[premise_idx] {
+        for (premise_idx, used) in used_premises.iter_mut().enumerate().take(dp_len) {
+            if *used {
                 continue;
             }
 
@@ -199,7 +202,7 @@ fn find_side_premises(
                 // Compose substitutions
                 combined_subst = combined_subst.compose(&sigma);
                 combined_constraint = combined_constraint.and(premise.constraint.clone());
-                used_premises[premise_idx] = true;
+                *used = true;
                 found = true;
                 break;
             }
@@ -473,11 +476,7 @@ fn find_selected_literal(
 /// in the trail interpretation. For ground literals, we check contains_ground.
 /// For non-ground literals, we check if the complement unifies with any
 /// selected literal on the trail (which would block all instances).
-fn has_proper_instances(
-    lit: &Literal,
-    trail: &Trail,
-    _constraint: &Constraint,
-) -> bool {
+fn has_proper_instances(lit: &Literal, trail: &Trail, _constraint: &Constraint) -> bool {
     let complement = lit.negated();
 
     // For ground literals, check if complement is in partial interpretation
@@ -572,7 +571,9 @@ fn find_blocking_clause(
             if selected.positive != clause_selected.positive
                 && selected.atom.predicate == clause_selected.atom.predicate
             {
-                if let UnifyResult::Success(_) = unify_literals(&selected.negated(), clause_selected) {
+                if let UnifyResult::Success(_) =
+                    unify_literals(&selected.negated(), clause_selected)
+                {
                     // Check if constraints intersect
                     if extended.constraint.intersects(&clause.constraint) {
                         // Only a critical extension if blocker is on DIFFERENT predicate
@@ -793,10 +794,7 @@ mod tests {
 
         // Add (p∨q) with p selected (index 0)
         let first_clause = ConstrainedClause::with_constraint(
-            Clause::new(vec![
-                Literal::pos("p", vec![]),
-                Literal::pos("q", vec![]),
-            ]),
+            Clause::new(vec![Literal::pos("p", vec![]), Literal::pos("q", vec![])]),
             Constraint::True,
             0, // p selected
         );

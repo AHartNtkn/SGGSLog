@@ -2,7 +2,7 @@
 
 use super::ConstrainedClause;
 use crate::constraint::{AtomicConstraint, Constraint};
-use crate::syntax::{Clause, Term};
+use crate::syntax::Term;
 use crate::unify::{unify_literals, UnifyResult};
 
 /// Result of SGGS-Splitting.
@@ -42,7 +42,7 @@ pub fn sggs_splitting_on(
     }
 
     // Try to unify the literals (ignoring sign for intersection check)
-    let sigma = match unify_literals(clause_lit, other_lit) {
+    let _sigma = match unify_literals(clause_lit, other_lit) {
         UnifyResult::Success(s) => s,
         UnifyResult::Failure(_) => return None,
     };
@@ -52,13 +52,7 @@ pub fn sggs_splitting_on(
     let mut intersection_constraint = clause.constraint.clone();
     let mut has_constraint = false;
 
-    for (idx, (clause_arg, other_arg)) in clause_lit
-        .atom
-        .args
-        .iter()
-        .zip(other_lit.atom.args.iter())
-        .enumerate()
-    {
+    for (clause_arg, other_arg) in clause_lit.atom.args.iter().zip(other_lit.atom.args.iter()) {
         // Only create constraints for variables in the clause being split
         if let Term::Var(_) = clause_arg {
             match other_arg {
@@ -72,25 +66,19 @@ pub fn sggs_splitting_on(
                 Term::App(fn_sym, _) => {
                     if fn_sym.arity == 0 {
                         // Constant: use Identical constraint
-                        intersection_constraint = intersection_constraint.and(
-                            Constraint::Atomic(AtomicConstraint::Identical(
-                                clause_arg.clone(),
-                                other_arg.clone(),
-                            )),
-                        );
+                        intersection_constraint = intersection_constraint.and(Constraint::Atomic(
+                            AtomicConstraint::Identical(clause_arg.clone(), other_arg.clone()),
+                        ));
                     } else {
                         // Function application: use RootEquals constraint
-                        intersection_constraint = intersection_constraint.and(
-                            Constraint::Atomic(AtomicConstraint::RootEquals(
-                                clause_arg.clone(),
-                                fn_sym.name.clone(),
-                            )),
-                        );
+                        intersection_constraint = intersection_constraint.and(Constraint::Atomic(
+                            AtomicConstraint::RootEquals(clause_arg.clone(), fn_sym.name.clone()),
+                        ));
                     }
                     has_constraint = true;
                 }
             }
-        } else if let Term::App(clause_fn, clause_args) = clause_arg {
+        } else if let Term::App(clause_fn, _clause_args) = clause_arg {
             // Clause has a function application, check if it matches other
             match other_arg {
                 Term::Var(_) => {
@@ -155,14 +143,6 @@ pub fn sggs_splitting_on(
     Some(SplitResult {
         parts: vec![intersection_part, complement_part],
     })
-}
-
-/// Extract a Var from a Term::Var
-fn extract_var(term: &Term) -> crate::syntax::Var {
-    match term {
-        Term::Var(v) => v.clone(),
-        _ => panic!("expected Var"),
-    }
 }
 
 /// Build the complement constraint for the split.

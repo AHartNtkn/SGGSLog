@@ -20,7 +20,7 @@ impl Formula {
         Formula::Atom(atom)
     }
 
-    pub fn not(inner: Formula) -> Self {
+    pub fn negation(inner: Formula) -> Self {
         Formula::Not(Box::new(inner))
     }
 

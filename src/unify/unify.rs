@@ -55,14 +55,10 @@ fn unify_with_subst(t1: &Term, t2: &Term, subst: Substitution) -> UnifyResult {
         (a, b) if a == b => UnifyResult::Success(subst),
 
         // Variable on the left
-        (Term::Var(var), term) => {
-            unify_var(var, term, subst)
-        }
+        (Term::Var(var), term) => unify_var(var, term, subst),
 
         // Variable on the right
-        (term, Term::Var(var)) => {
-            unify_var(var, term, subst)
-        }
+        (term, Term::Var(var)) => unify_var(var, term, subst),
 
         // Both are function applications
         (Term::App(fn1, args1), Term::App(fn2, args2)) => {
@@ -92,9 +88,8 @@ fn unify_with_subst(t1: &Term, t2: &Term, subst: Substitution) -> UnifyResult {
             }
 
             // Unify arguments pairwise
-            let pairs: Vec<(Term, Term)> = args1.iter().cloned()
-                .zip(args2.iter().cloned())
-                .collect();
+            let pairs: Vec<(Term, Term)> =
+                args1.iter().cloned().zip(args2.iter().cloned()).collect();
             unify_many_with_subst(&pairs, subst)
         }
     }
@@ -181,7 +176,10 @@ pub fn unify_literals(l1: &Literal, l2: &Literal) -> UnifyResult {
     }
 
     // Unify arguments pairwise
-    let pairs: Vec<(Term, Term)> = atom1.args.iter().cloned()
+    let pairs: Vec<(Term, Term)> = atom1
+        .args
+        .iter()
+        .cloned()
         .zip(atom2.args.iter().cloned())
         .collect();
     unify_many(&pairs)
