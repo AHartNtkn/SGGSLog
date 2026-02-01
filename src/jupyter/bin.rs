@@ -128,6 +128,20 @@ async fn handle_shell_message(
     kernel: Arc<Mutex<Kernel>>,
     key: Arc<Vec<u8>>,
 ) {
+    // Send busy status at start of every message (required by Jupyter protocol)
+    {
+        let status_msg = Message {
+            identities: vec![b"status".to_vec()],
+            header: Header::new("status", &message.header.session),
+            parent_header: Some(message.header.clone()),
+            metadata: std::collections::HashMap::new(),
+            content: serde_json::json!({"execution_state": "busy"}),
+            buffers: Vec::new(),
+        };
+        let mut iopub = iopub_socket.lock().await;
+        send_pub_message(&mut *iopub, status_msg, &key).await;
+    }
+
     match message.header.msg_type.as_str() {
         "kernel_info_request" => {
             let reply = message.reply(
@@ -138,29 +152,8 @@ async fn handle_shell_message(
         }
 
         "execute_request" => {
-            let request: ExecuteRequest = match serde_json::from_value(message.content.clone()) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Failed to parse execute request: {}", e);
-                    return;
-                }
-            };
-
-            // Send busy status
-            {
-                let status_msg = Message {
-                    identities: vec![b"status".to_vec()],
-                    header: Header::new("status", &message.header.session),
-                    parent_header: Some(message.header.clone()),
-                    metadata: std::collections::HashMap::new(),
-                    content: serde_json::json!({"execution_state": "busy"}),
-                    buffers: Vec::new(),
-                };
-                let mut iopub = iopub_socket.lock().await;
-                send_pub_message(&mut *iopub, status_msg, &key).await;
-            }
-
-            // Execute the code
+            if let Ok(request) = serde_json::from_value::<ExecuteRequest>(message.content.clone()) {
+                // Execute the code
             let result = {
                 let mut k = kernel.lock().await;
                 k.execute(&request.code)
@@ -247,20 +240,7 @@ async fn handle_shell_message(
                     send_message(shell_socket, reply, &key).await;
                 }
             }
-
-            // Send idle status
-            {
-                let status_msg = Message {
-                    identities: vec![b"status".to_vec()],
-                    header: Header::new("status", &message.header.session),
-                    parent_header: Some(message.header.clone()),
-                    metadata: std::collections::HashMap::new(),
-                    content: serde_json::json!({"execution_state": "idle"}),
-                    buffers: Vec::new(),
-                };
-                let mut iopub = iopub_socket.lock().await;
-                send_pub_message(&mut *iopub, status_msg, &key).await;
-            }
+            } // close if let Ok(request)
         }
 
         "is_complete_request" => {
@@ -290,6 +270,20 @@ async fn handle_shell_message(
         _ => {
             eprintln!("Unknown message type: {}", message.header.msg_type);
         }
+    }
+
+    // Send idle status at end of every message (required by Jupyter protocol)
+    {
+        let status_msg = Message {
+            identities: vec![b"status".to_vec()],
+            header: Header::new("status", &message.header.session),
+            parent_header: Some(message.header.clone()),
+            metadata: std::collections::HashMap::new(),
+            content: serde_json::json!({"execution_state": "idle"}),
+            buffers: Vec::new(),
+        };
+        let mut iopub = iopub_socket.lock().await;
+        send_pub_message(&mut *iopub, status_msg, &key).await;
     }
 }
 
