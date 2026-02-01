@@ -393,6 +393,85 @@ fn session_load_file_adds_clauses() {
 }
 
 #[test]
+fn session_unsat_contradiction_query_exhausts() {
+    // Source: spec.md.
+    // Quote: "If the theory is unsatisfiable, queries likewise yield no answers and are immediately exhausted."
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "contra",
+            vec![],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::neg(
+            "contra",
+            vec![],
+        )])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "anything",
+        vec![Term::var("X")],
+    )]));
+    let result = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    match result {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Exhausted) => {}
+        other => panic!("expected exhausted query result, got {:?}", other),
+    }
+}
+
+#[test]
+fn session_unsat_theory_exhausts_even_with_infinite_extensions() {
+    // Source: spec.md.
+    // Quote: "If the theory is unsatisfiable, queries likewise yield no answers and are immediately exhausted."
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Directive(Directive::Set(
+            crate::parser::Setting::TimeoutMs(200),
+        )))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("a")],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![
+            Literal::neg("p", vec![Term::var("X")]),
+            Literal::pos("p", vec![Term::app("f", vec![Term::var("X")])]),
+        ])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "contra",
+            vec![],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::neg(
+            "contra",
+            vec![],
+        )])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "anything",
+        vec![Term::var("X")],
+    )]));
+    let result = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    match result {
+        ExecResult::QueryResult(crate::sggs::QueryResult::Exhausted) => {}
+        other => panic!("expected exhausted query result, got {:?}", other),
+    }
+}
+
+#[test]
 fn session_load_file_normalizes_formulas() {
     let mut session = Session::new();
     let unique = SystemTime::now()
