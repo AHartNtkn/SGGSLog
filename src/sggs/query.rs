@@ -4,7 +4,7 @@ use super::{DerivationConfig, DerivationResult, DerivationState};
 use crate::syntax::{Atom, Literal, Query, Term, UserSignature, Var};
 use crate::theory::Theory;
 use crate::unify::{unify_literals, Substitution, UnifyResult};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 /// Result of answering a query (model-based).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,12 +51,16 @@ pub struct QueryStream {
     final_result: Option<DerivationResult>,
     /// Number of derivation steps taken
     steps_taken: usize,
-    /// Minimum steps before extracting answers (allows conflict detection)
-    min_steps: usize,
     /// Cursor for incremental extraction: index of next clause to check
     extraction_cursor: usize,
     /// Pending candidate literals to try matching (for cursor-based extraction)
-    pending_candidates: Vec<Literal>,
+    pending_candidates: VecDeque<Literal>,
+    /// Number of derivation steps since last extraction.
+    /// We require at least `theory_size` steps before first extraction to ensure
+    /// all theory clauses have a chance to be extended and conflicts detected.
+    steps_since_extraction: usize,
+    /// Number of clauses in the theory (used to determine warmup period).
+    theory_size: usize,
 }
 
 impl QueryStream {
@@ -67,10 +71,11 @@ impl QueryStream {
         user_signature: Option<UserSignature>,
         policy: ProjectionPolicy,
     ) -> Self {
-        // Run at least 2*|theory| steps before extracting answers
-        // This gives time for all clauses to be extended and conflicts to be detected
-        let min_steps = 2 * theory.clauses().len().max(1);
+        let theory_size = theory.clauses().len();
         let derivation = DerivationState::new(theory, config);
+        // Start cursor at initial trail length - only extract from clauses added
+        // AFTER derivation starts, ensuring conflict detection runs first
+        let initial_trail_len = derivation.trail().clauses().len();
 
         QueryStream {
             query,
@@ -80,9 +85,10 @@ impl QueryStream {
             seen_answers: HashSet::new(),
             final_result: None,
             steps_taken: 0,
-            min_steps,
-            extraction_cursor: 0,
-            pending_candidates: Vec::new(),
+            extraction_cursor: initial_trail_len,
+            pending_candidates: VecDeque::new(),
+            steps_since_extraction: 0,
+            theory_size,
         }
     }
 
@@ -108,11 +114,15 @@ impl QueryStream {
 
         // Run derivation steps until we find a new answer or complete
         loop {
-            // Only extract answers after minimum warmup steps
-            // This gives time for conflicts to be detected in unsatisfiable theories
-            if self.steps_taken >= self.min_steps {
-                // Try to extract one answer from current trail state
+            // Require at least `theory_size` steps (minimum 1) before extracting.
+            // This ensures all theory clauses have a chance to be extended and
+            // any conflicts detected before returning answers.
+            // Justification: each extension step processes one theory clause,
+            // so after N steps all N clauses have been tried.
+            let min_steps = self.theory_size.max(1);
+            if self.steps_since_extraction >= min_steps {
                 if let Some(ans) = self.try_extract_one_answer() {
+                    self.steps_since_extraction = 0;
                     return QueryResult::Answer(ans);
                 }
             }
@@ -122,28 +132,34 @@ impl QueryStream {
             match derivation.step() {
                 Some(_step) => {
                     self.steps_taken += 1;
+                    self.steps_since_extraction += 1;
                     // Derivation made progress, loop to check for new answers
                     continue;
                 }
                 None => {
-                    // Derivation complete - check result
+                    // Derivation at rest - check result
                     self.final_result = derivation.result().cloned();
 
-                    // For satisfiable theories, do one final extraction
+                    // For satisfiable theories, try extraction
                     if matches!(self.final_result, Some(DerivationResult::Satisfiable(_))) {
                         if let Some(ans) = self.try_extract_one_answer() {
-                            // Keep derivation around for more extractions
+                            self.steps_since_extraction = 0;
                             return QueryResult::Answer(ans);
                         }
                     }
 
-                    self.derivation = None;
+                    // Check if derivation is truly complete
+                    if self.final_result.is_some() {
+                        self.derivation = None;
+                        return match &self.final_result {
+                            Some(DerivationResult::Timeout) => QueryResult::Timeout,
+                            _ => QueryResult::Exhausted,
+                        };
+                    }
 
-                    // Return based on final result
-                    return match &self.final_result {
-                        Some(DerivationResult::Timeout) => QueryResult::Timeout,
-                        _ => QueryResult::Exhausted,
-                    };
+                    // Derivation returned None but no final result - keep trying
+                    // (this can happen for incremental derivations)
+                    continue;
                 }
             }
         }
@@ -169,8 +185,8 @@ impl QueryStream {
         if self.query.literals.len() == 1 && self.query.literals[0].positive {
             let query_lit = self.query.literals[0].clone();
 
-            // Try pending candidates one at a time
-            while let Some(trail_lit) = self.pending_candidates.pop() {
+            // Try pending candidates one at a time (FIFO order)
+            while let Some(trail_lit) = self.pending_candidates.pop_front() {
                 if let Some(ans) =
                     self.try_match_single_literal(&query_lit, &trail_lit, &query_vars)
                 {
@@ -206,15 +222,15 @@ impl QueryStream {
                 }
             }
 
-            // Collect candidate literals from cursor position onwards
-            let mut cands = Vec::new();
+            // Collect candidate literals from cursor position onwards (FIFO order)
+            let mut cands = VecDeque::new();
             while self.extraction_cursor < clauses.len() {
                 let clause = &clauses[self.extraction_cursor];
                 self.extraction_cursor += 1;
 
                 let selected = clause.selected_literal();
                 if init_interp.is_false(selected) && selected.positive {
-                    cands.push(selected.clone());
+                    cands.push_back(selected.clone());
                 }
             }
 
@@ -230,9 +246,9 @@ impl QueryStream {
             let query_lit = self.query.literals[0].clone();
 
             if query_lit.positive {
-                // Positive query - try new candidates one at a time
+                // Positive query - try new candidates one at a time (FIFO order)
                 let mut candidates = new_candidates;
-                while let Some(trail_lit) = candidates.pop() {
+                while let Some(trail_lit) = candidates.pop_front() {
                     if let Some(ans) =
                         self.try_match_single_literal(&query_lit, &trail_lit, &query_vars)
                     {
