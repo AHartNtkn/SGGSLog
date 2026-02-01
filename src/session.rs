@@ -3,7 +3,8 @@
 use crate::normalize::{clausify_statement, clausify_statements};
 use crate::parser::{parse_file, Directive, ProjectionSetting, Setting, Statement};
 use crate::sggs::{
-    answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult, QueryStream,
+    answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult, QueryStats,
+    QueryStream,
 };
 use crate::syntax::{Literal, UserSignature};
 use crate::theory::Theory;
@@ -21,6 +22,7 @@ pub enum ExecResult {
 pub enum DirectiveResult {
     Loaded { path: String, clauses: usize },
     Set(Setting),
+    Stats(QueryStats),
 }
 
 /// Session error.
@@ -192,6 +194,10 @@ impl Session {
         match directive {
             Directive::Load(path) => self.load_file(&path),
             Directive::Set(setting) => self.apply_setting(setting),
+            Directive::Stats => {
+                let stats = self.query_stats()?;
+                Ok(DirectiveResult::Stats(stats))
+            }
             Directive::Next => {
                 // Return the next answer from the active query
                 if let Some(ref mut stream) = self.active_query {
@@ -220,6 +226,17 @@ impl Session {
     pub fn next_answer(&mut self) -> Result<QueryResult, SessionError> {
         if let Some(ref mut stream) = self.active_query {
             Ok(stream.next_answer())
+        } else {
+            Err(SessionError {
+                message: "No active query".to_string(),
+            })
+        }
+    }
+
+    /// Get stats for the active query stream.
+    pub fn query_stats(&self) -> Result<QueryStats, SessionError> {
+        if let Some(ref stream) = self.active_query {
+            Ok(stream.stats())
         } else {
             Err(SessionError {
                 message: "No active query".to_string(),

@@ -90,6 +90,10 @@ impl Repl {
                 let result = self.session.next_answer()?;
                 Ok(format_query_result(&result))
             }
+            "stats" => {
+                let stats = self.session.query_stats()?;
+                Ok(format_query_stats(&stats))
+            }
             "set" => self.process_set_directive(args),
             "load" | "l" => {
                 if args.is_empty() {
@@ -239,6 +243,7 @@ fn format_directive_result(result: &DirectiveResult) -> String {
             Setting::Projection(proj) => format!("Set projection = {:?}", proj),
             Setting::Unknown { key, value } => format!("Set {} = {}", key, value),
         },
+        DirectiveResult::Stats(stats) => format_query_stats(stats),
     }
 }
 
@@ -249,6 +254,13 @@ fn format_exec_result(result: &ExecResult) -> String {
         ExecResult::QueryResult(qr) => format_query_result(qr),
         ExecResult::DirectiveApplied(dr) => format_directive_result(dr),
     }
+}
+
+fn format_query_stats(stats: &crate::sggs::QueryStats) -> String {
+    format!(
+        "pending_answers={}, seen_answers={}, steps_taken={}, derivation_done={}",
+        stats.pending_answers, stats.seen_answers, stats.steps_taken, stats.derivation_done
+    )
 }
 
 impl Default for Repl {

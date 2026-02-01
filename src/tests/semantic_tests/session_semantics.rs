@@ -10,7 +10,7 @@ use crate::session::{ExecResult, Session};
 use crate::sggs::{answer_query, Query};
 use crate::syntax::{Atom, Formula};
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn term_uses_only_symbols(term: &Term, allowed: &crate::syntax::Signature) -> bool {
     match term {
@@ -161,6 +161,113 @@ fn session_positive_query_streams_multiple_answers_without_exhaustion() {
     }
 
     match qr {
+        crate::sggs::QueryResult::Answer(_) => {}
+        crate::sggs::QueryResult::Exhausted => panic!("expected more answers, got exhausted"),
+        crate::sggs::QueryResult::Timeout => panic!("expected answer, got timeout"),
+    }
+}
+
+#[test]
+fn session_stats_reports_no_prefetch_between_next_calls() {
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("a")],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("b")],
+        )])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("X")])]));
+    let first = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    assert!(matches!(
+        first,
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))
+    ));
+
+    let stats = session
+        .execute_statement(Statement::Directive(Directive::Stats))
+        .expect("execute_statement failed");
+    let stats = match stats {
+        ExecResult::DirectiveApplied(DirectiveResult::Stats(stats)) => stats,
+        other => panic!("expected stats result, got {:?}", other),
+    };
+    assert_eq!(
+        stats.pending_answers, 0,
+        "stats should report no prefetched answers after a :next-equivalent query answer"
+    );
+
+    let next = session
+        .execute_statement(Statement::Directive(Directive::Next))
+        .expect("execute_statement failed");
+    assert!(matches!(
+        next,
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))
+    ));
+
+    let stats = session
+        .execute_statement(Statement::Directive(Directive::Stats))
+        .expect("execute_statement failed");
+    let stats = match stats {
+        ExecResult::DirectiveApplied(DirectiveResult::Stats(stats)) => stats,
+        other => panic!("expected stats result, got {:?}", other),
+    };
+    assert_eq!(
+        stats.pending_answers, 0,
+        "stats should report no prefetched answers after :next"
+    );
+}
+
+#[test]
+fn session_next_uses_fresh_timeout_budget() {
+    // Source: spec.md (timeout_ms is a best-effort wall-clock budget for derivation and query
+    // evaluation; :next retrieves subsequent answers). Each :next should have its own budget.
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Directive(Directive::Set(
+            crate::parser::Setting::TimeoutMs(100),
+        )))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("a")],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![
+            Literal::neg("p", vec![Term::var("X")]),
+            Literal::pos("p", vec![Term::app("f", vec![Term::var("X")])]),
+        ])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("X")])]));
+    let first = session
+        .execute_statement(stmt)
+        .expect("execute_statement failed");
+    assert!(matches!(
+        first,
+        ExecResult::QueryResult(crate::sggs::QueryResult::Answer(_))
+    ));
+
+    // Sleep past the timeout budget; a fresh :next call should still be able to answer.
+    std::thread::sleep(Duration::from_millis(300));
+
+    let next = session
+        .execute_statement(Statement::Directive(Directive::Next))
+        .expect("execute_statement failed");
+    let next = match next {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
+    };
+    match next {
         crate::sggs::QueryResult::Answer(_) => {}
         crate::sggs::QueryResult::Exhausted => panic!("expected more answers, got exhausted"),
         crate::sggs::QueryResult::Timeout => panic!("expected answer, got timeout"),

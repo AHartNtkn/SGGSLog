@@ -481,6 +481,19 @@ impl DerivationState {
         false
     }
 
+    /// Reset the timeout clock to now.
+    ///
+    /// This allows per-request timeout budgets when used with streaming queries.
+    pub fn reset_timeout(&mut self) {
+        if self.config.timeout_ms.is_some() {
+            self.start_time = Some(Instant::now());
+        }
+        // Clear timeout result if it was set
+        if matches!(self.done, Some(DerivationResult::Timeout)) {
+            self.done = None;
+        }
+    }
+
     /// Perform one inference step.
     ///
     /// Returns `Some(step)` if an inference was applied, `None` if the derivation

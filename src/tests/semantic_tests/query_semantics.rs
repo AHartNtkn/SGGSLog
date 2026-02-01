@@ -7,9 +7,12 @@ use super::*;
 // Queries are interpreted as conjunctions of literals.
 // Queries are answered against the SGGS-constructed model (not refutation).
 
-use crate::sggs::{answer_query, answer_query_projected, ProjectionPolicy, Query, QueryResult};
+use crate::sggs::{
+    answer_query, answer_query_projected, DerivationConfig, ProjectionPolicy, Query, QueryResult,
+};
 use crate::unify::Substitution;
 use std::collections::HashSet;
+use std::time::Duration;
 
 fn subst_key(s: &Substitution) -> String {
     let mut entries: Vec<String> = s
@@ -90,6 +93,81 @@ fn ground_query_not_entailed_has_no_answers() {
     match stream.next_answer() {
         QueryResult::Exhausted => {}
         other => panic!("Expected no answers, got {:?}", other),
+    }
+}
+
+#[test]
+fn query_timeout_budget_starts_on_first_next_answer_call() {
+    // Source: spec.md (timeout_ms is a wall-clock budget for derivation and query evaluation).
+    // The budget should start when evaluation begins (first next_answer), not at stream creation.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    let query = Query::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
+    let mut stream = answer_query(
+        &theory,
+        &query,
+        DerivationConfig {
+            timeout_ms: Some(50),
+            ..DerivationConfig::default()
+        },
+    );
+
+    std::thread::sleep(Duration::from_millis(120));
+
+    match stream.next_answer() {
+        QueryResult::Answer(ans) => {
+            assert!(ans.domain().is_empty(), "ground answer should be empty");
+        }
+        other => panic!(
+            "expected answer when first requesting results, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn query_per_request_timeout_allows_answers_after_sleep() {
+    // With per-request timeout, each next_answer() call gets a fresh budget.
+    // Sleeping between calls should NOT prevent getting more answers.
+    let mut theory = crate::theory::Theory::new();
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("a")],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "p",
+        vec![Term::constant("b")],
+    )]));
+    let query = Query::new(vec![Literal::pos("p", vec![Term::var("X")])]);
+    let mut stream = answer_query(
+        &theory,
+        &query,
+        DerivationConfig {
+            timeout_ms: Some(40),
+            ..DerivationConfig::default()
+        },
+    );
+
+    match stream.next_answer() {
+        QueryResult::Answer(_) => {}
+        other => panic!("expected first answer, got {:?}", other),
+    }
+
+    // Sleep longer than the timeout budget
+    std::thread::sleep(Duration::from_millis(90));
+
+    // Second call should still work because each request gets a fresh budget
+    match stream.next_answer() {
+        QueryResult::Answer(_) | QueryResult::Exhausted => {
+            // Either another answer or exhausted is acceptable
+            // (depends on whether derivation found more answers)
+        }
+        QueryResult::Timeout => {
+            panic!("per-request timeout should reset, not timeout after sleep")
+        }
     }
 }
 

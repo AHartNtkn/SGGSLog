@@ -12,6 +12,8 @@ This repo implements SGGS as specified by SGGS papers and `spec.md`. The goal is
 - If you identify gaps, frame them as: **missing SGGS-required coverage** or **extra assumptions not required by SGGS**.
 - Minimize questions. Ask only if you are blocked from proceeding.
 - Keep responses concise and action-oriented.
+- Never claim something was verified without running the corresponding command or test. If a test is expected to demonstrate behavior, run it before reporting results.
+- Never use the current state of the codebase as a reason to avoid doing something.
 - Never mention implementation complexity or refactor size; the user only cares about the final result.
 - Do not ask for permission or confirmation to proceed with requested work; proceed directly.
 - **You are explicitly encouraged to change the API to improve it so long as it faithfully captures SGGS. Do not avoid a change just because it changes the public API.**

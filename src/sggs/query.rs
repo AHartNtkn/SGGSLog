@@ -17,6 +17,15 @@ pub enum QueryResult {
     Timeout,
 }
 
+/// Snapshot statistics for a query stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryStats {
+    pub pending_answers: usize,
+    pub seen_answers: usize,
+    pub steps_taken: usize,
+    pub derivation_done: bool,
+}
+
 /// Policy for projecting internal symbols from user-visible answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectionPolicy {
@@ -38,14 +47,16 @@ pub struct QueryStream {
     derivation: Option<DerivationState>,
     /// Answers already seen (for deduplication)
     seen_answers: HashSet<Vec<(Var, Term)>>,
-    /// Pending answers found but not yet returned
-    pending_answers: Vec<Substitution>,
     /// Final result if derivation completed
     final_result: Option<DerivationResult>,
     /// Number of derivation steps taken
     steps_taken: usize,
     /// Minimum steps before extracting answers (allows conflict detection)
     min_steps: usize,
+    /// Cursor for incremental extraction: index of next clause to check
+    extraction_cursor: usize,
+    /// Pending candidate literals to try matching (for cursor-based extraction)
+    pending_candidates: Vec<Literal>,
 }
 
 impl QueryStream {
@@ -67,10 +78,11 @@ impl QueryStream {
             policy,
             derivation: Some(derivation),
             seen_answers: HashSet::new(),
-            pending_answers: Vec::new(),
             final_result: None,
             steps_taken: 0,
             min_steps,
+            extraction_cursor: 0,
+            pending_candidates: Vec::new(),
         }
     }
 
@@ -78,10 +90,12 @@ impl QueryStream {
     ///
     /// This runs derivation incrementally until a new answer is found,
     /// the derivation completes, or a timeout is reached.
+    ///
+    /// Each call resets the timeout budget, allowing per-request timeouts.
     pub fn next_answer(&mut self) -> QueryResult {
-        // Return pending answer if available
-        if let Some(ans) = self.pending_answers.pop() {
-            return QueryResult::Answer(ans);
+        // Reset timeout at start of each request
+        if let Some(derivation) = &mut self.derivation {
+            derivation.reset_timeout();
         }
 
         // If derivation is done, check final result
@@ -97,10 +111,8 @@ impl QueryStream {
             // Only extract answers after minimum warmup steps
             // This gives time for conflicts to be detected in unsatisfiable theories
             if self.steps_taken >= self.min_steps {
-                self.extract_new_answers();
-
-                // Return if we found any
-                if let Some(ans) = self.pending_answers.pop() {
+                // Try to extract one answer from current trail state
+                if let Some(ans) = self.try_extract_one_answer() {
                     return QueryResult::Answer(ans);
                 }
             }
@@ -117,19 +129,17 @@ impl QueryStream {
                     // Derivation complete - check result
                     self.final_result = derivation.result().cloned();
 
-                    // For satisfiable theories, do one final extraction before clearing derivation
+                    // For satisfiable theories, do one final extraction
                     if matches!(self.final_result, Some(DerivationResult::Satisfiable(_))) {
-                        self.extract_new_answers();
+                        if let Some(ans) = self.try_extract_one_answer() {
+                            // Keep derivation around for more extractions
+                            return QueryResult::Answer(ans);
+                        }
                     }
 
                     self.derivation = None;
 
-                    // Return pending answer if we found one
-                    if let Some(ans) = self.pending_answers.pop() {
-                        return QueryResult::Answer(ans);
-                    }
-
-                    // Otherwise return based on final result
+                    // Return based on final result
                     return match &self.final_result {
                         Some(DerivationResult::Timeout) => QueryResult::Timeout,
                         _ => QueryResult::Exhausted,
@@ -139,39 +149,80 @@ impl QueryStream {
         }
     }
 
-    /// Extract new answers from the current trail state.
-    fn extract_new_answers(&mut self) {
-        let Some(derivation) = &self.derivation else {
-            return;
-        };
-
-        let trail = derivation.trail();
-
-        // Don't extract answers if there's a conflict on the trail.
-        // Conflicts indicate potential unsatisfiability - we should wait until
-        // the conflict is resolved before returning any answers.
-        if trail.find_conflict().is_some() {
-            return;
+    /// Return current statistics about the query stream.
+    pub fn stats(&self) -> QueryStats {
+        QueryStats {
+            pending_answers: 0, // No longer buffered
+            seen_answers: self.seen_answers.len(),
+            steps_taken: self.steps_taken,
+            derivation_done: self.derivation.is_none(),
         }
+    }
 
-        let init_interp = trail.initial_interpretation();
+    /// Try to extract one new answer from the current trail state.
+    ///
+    /// Uses a cursor and pending_candidates to track progress incrementally.
+    fn try_extract_one_answer(&mut self) -> Option<Substitution> {
         let query_vars: HashSet<Var> = self.query.variables();
 
-        // Build the set of true atoms and patterns from the trail.
-        // I-false selected positive literals are made true by the trail.
-        let mut true_atoms: HashSet<Atom> = HashSet::new();
-        let mut true_patterns: Vec<Literal> = Vec::new();
+        // For positive single-literal queries, try pending candidates first
+        if self.query.literals.len() == 1 && self.query.literals[0].positive {
+            let query_lit = self.query.literals[0].clone();
 
-        for clause in trail.clauses() {
-            let selected = clause.selected_literal();
-            // I-false selected positive literals contribute to the model
-            if init_interp.is_false(selected) && selected.positive {
-                if selected.is_ground() {
-                    true_atoms.insert(selected.atom.clone());
-                } else {
-                    true_patterns.push(selected.clone());
+            // Try pending candidates one at a time
+            while let Some(trail_lit) = self.pending_candidates.pop() {
+                if let Some(ans) =
+                    self.try_match_single_literal(&query_lit, &trail_lit, &query_vars)
+                {
+                    return Some(ans);
                 }
             }
+        }
+
+        // Collect data from the derivation/trail
+        let (has_conflict, true_atoms, true_patterns, new_candidates) = {
+            let derivation = self.derivation.as_ref()?;
+            let trail = derivation.trail();
+
+            // Check for conflict
+            if trail.find_conflict().is_some() {
+                return None;
+            }
+
+            let init_interp = trail.initial_interpretation();
+            let clauses = trail.clauses();
+
+            // Build model state from trail
+            let mut atoms = HashSet::new();
+            let mut patterns = Vec::new();
+            for clause in clauses {
+                let selected = clause.selected_literal();
+                if init_interp.is_false(selected) && selected.positive {
+                    if selected.is_ground() {
+                        atoms.insert(selected.atom.clone());
+                    } else {
+                        patterns.push(selected.clone());
+                    }
+                }
+            }
+
+            // Collect candidate literals from cursor position onwards
+            let mut cands = Vec::new();
+            while self.extraction_cursor < clauses.len() {
+                let clause = &clauses[self.extraction_cursor];
+                self.extraction_cursor += 1;
+
+                let selected = clause.selected_literal();
+                if init_interp.is_false(selected) && selected.positive {
+                    cands.push(selected.clone());
+                }
+            }
+
+            (false, atoms, patterns, cands)
+        };
+
+        if has_conflict {
+            return None;
         }
 
         // Handle single-literal queries
@@ -179,81 +230,45 @@ impl QueryStream {
             let query_lit = self.query.literals[0].clone();
 
             if query_lit.positive {
-                // Positive query - match against true atoms/patterns
-                self.extract_positive_single_literal(
-                    &query_lit,
-                    &true_atoms,
-                    &true_patterns,
-                    &query_vars,
-                );
+                // Positive query - try new candidates one at a time
+                let mut candidates = new_candidates;
+                while let Some(trail_lit) = candidates.pop() {
+                    if let Some(ans) =
+                        self.try_match_single_literal(&query_lit, &trail_lit, &query_vars)
+                    {
+                        // Save remaining candidates for next call
+                        self.pending_candidates = candidates;
+                        return Some(ans);
+                    }
+                }
+                return None;
             } else {
                 // Negative query - check for absence from model
-                self.extract_negative_single_literal(
+                return self.try_extract_negative_answer(
                     &query_lit,
                     &true_atoms,
                     &true_patterns,
                     &query_vars,
                 );
             }
-            return;
         }
 
-        // Handle multi-literal (conjunctive) queries
-        self.extract_multi_literal(&true_atoms, &query_vars);
+        // For multi-literal queries
+        self.extract_multi_literal_one(&true_atoms, &query_vars)
     }
 
-    /// Extract answers for a single positive literal query.
-    fn extract_positive_single_literal(
+    /// Try to extract an answer for a negative query.
+    fn try_extract_negative_answer(
         &mut self,
         query_lit: &Literal,
         true_atoms: &HashSet<Atom>,
         true_patterns: &[Literal],
         query_vars: &HashSet<Var>,
-    ) {
-        // Check ground atoms
-        for atom in true_atoms {
-            if atom.predicate != query_lit.atom.predicate {
-                continue;
-            }
-
-            let model_lit = Literal {
-                positive: true,
-                atom: atom.clone(),
-            };
-
-            if let UnifyResult::Success(sigma) = unify_literals(query_lit, &model_lit) {
-                self.add_answer_if_new(&sigma, query_vars);
-            }
-        }
-
-        // Check non-ground patterns
-        for pattern in true_patterns {
-            if !pattern.positive || pattern.atom.predicate != query_lit.atom.predicate {
-                continue;
-            }
-
-            // Rename pattern variables to avoid clashes with query variables
-            let renamed = rename_away_from(pattern, query_vars);
-
-            if let UnifyResult::Success(sigma) = unify_literals(query_lit, &renamed) {
-                self.add_answer_if_new(&sigma, query_vars);
-            }
-        }
-    }
-
-    /// Extract answers for a single negative literal query.
-    fn extract_negative_single_literal(
-        &mut self,
-        query_lit: &Literal,
-        true_atoms: &HashSet<Atom>,
-        true_patterns: &[Literal],
-        query_vars: &HashSet<Var>,
-    ) {
+    ) -> Option<Substitution> {
         // If the query is ground, check if the atom is absent from the model
         if query_lit.is_ground() {
-            // Check if atom is in true_atoms
             if !true_atoms.contains(&query_lit.atom) {
-                // Also check if any pattern covers this atom
+                // Check if any pattern covers this atom
                 let covered_by_pattern = true_patterns.iter().any(|pattern| {
                     if !pattern.positive || pattern.atom.predicate != query_lit.atom.predicate {
                         return false;
@@ -269,11 +284,10 @@ impl QueryStream {
                 });
 
                 if !covered_by_pattern {
-                    // Atom is absent from model - query is satisfied
-                    self.add_answer_if_new(&Substitution::empty(), query_vars);
+                    return self.add_answer_if_new_ret(&Substitution::empty(), query_vars);
                 }
             }
-            return;
+            return None;
         }
 
         // Non-ground negative query - enumerate over user signature constants
@@ -286,16 +300,13 @@ impl QueryStream {
                 .map(|fn_sig| Term::constant(&fn_sig.name))
                 .collect();
 
-            // Generate all possible ground instances using constants
             let vars: Vec<Var> = query_vars.iter().cloned().collect();
             let candidates = generate_ground_instances(&vars, &constants);
 
             for subst in candidates {
                 let grounded_lit = query_lit.apply_subst(&subst);
 
-                // Check if this ground negative literal is true (atom NOT in model)
                 if !true_atoms.contains(&grounded_lit.atom) {
-                    // Also check patterns
                     let covered_by_pattern = true_patterns.iter().any(|pattern| {
                         if !pattern.positive
                             || pattern.atom.predicate != grounded_lit.atom.predicate
@@ -313,16 +324,79 @@ impl QueryStream {
                     });
 
                     if !covered_by_pattern {
-                        self.add_answer_if_new(&subst, query_vars);
+                        if let Some(ans) = self.add_answer_if_new_ret(&subst, query_vars) {
+                            return Some(ans);
+                        }
                     }
                 }
             }
         }
+        None
     }
 
-    /// Extract answers for multi-literal (conjunctive) queries.
-    fn extract_multi_literal(&mut self, true_atoms: &HashSet<Atom>, query_vars: &HashSet<Var>) {
-        let mut new_answers = Vec::new();
+    /// Try to match a single query literal against a trail literal.
+    fn try_match_single_literal(
+        &mut self,
+        query_lit: &Literal,
+        trail_lit: &Literal,
+        query_vars: &HashSet<Var>,
+    ) -> Option<Substitution> {
+        if query_lit.positive {
+            // Positive query - match against the trail literal
+            if trail_lit.atom.predicate != query_lit.atom.predicate {
+                return None;
+            }
+
+            // Rename trail literal variables to avoid clashes
+            let renamed = rename_away_from(trail_lit, query_vars);
+
+            if let UnifyResult::Success(sigma) = unify_literals(query_lit, &renamed) {
+                return self.add_answer_if_new_ret(&sigma, query_vars);
+            }
+        } else {
+            // Negative query - this is more complex, handled separately
+            // For now, negative queries don't use cursor-based extraction
+        }
+        None
+    }
+
+    /// Add an answer if it's new, returning it if added.
+    fn add_answer_if_new_ret(
+        &mut self,
+        sigma: &Substitution,
+        query_vars: &HashSet<Var>,
+    ) -> Option<Substitution> {
+        let projected =
+            project_substitution(sigma, query_vars, self.user_signature.as_ref(), self.policy);
+
+        // Check projection didn't lose required bindings
+        let orig_bound: HashSet<_> = sigma
+            .bindings()
+            .filter(|(v, _)| query_vars.contains(*v))
+            .map(|(v, _)| v.clone())
+            .collect();
+        let proj_bound: HashSet<_> = projected.bindings().map(|(v, _)| v.clone()).collect();
+
+        if proj_bound.len() < orig_bound.len() {
+            return None;
+        }
+
+        let canonical = canonical_form(&projected);
+        if self.seen_answers.insert(canonical) {
+            Some(projected)
+        } else {
+            None
+        }
+    }
+
+    /// Extract one answer for multi-literal queries.
+    fn extract_multi_literal_one(
+        &mut self,
+        true_atoms: &HashSet<Atom>,
+        query_vars: &HashSet<Var>,
+    ) -> Option<Substitution> {
+        // Find answers recursively
+        let mut answers = Vec::new();
         let mut seen_in_search: HashSet<Vec<(Var, Term)>> = HashSet::new();
 
         self.find_multi_literal_answers_incremental(
@@ -330,16 +404,18 @@ impl QueryStream {
             true_atoms,
             Substitution::empty(),
             query_vars,
-            &mut new_answers,
+            &mut answers,
             &mut seen_in_search,
         );
 
-        for ans in new_answers {
+        // Return first new answer
+        for ans in answers {
             let canonical = canonical_form(&ans);
             if self.seen_answers.insert(canonical) {
-                self.pending_answers.push(ans);
+                return Some(ans);
             }
         }
+        None
     }
 
     /// Recursively find substitutions that satisfy all query literals.
@@ -403,29 +479,6 @@ impl QueryStream {
                     rest, true_atoms, combined, query_vars, answers, seen,
                 );
             }
-        }
-    }
-
-    /// Add an answer if it's new (not seen before).
-    fn add_answer_if_new(&mut self, sigma: &Substitution, query_vars: &HashSet<Var>) {
-        let projected =
-            project_substitution(sigma, query_vars, self.user_signature.as_ref(), self.policy);
-
-        // Check projection didn't lose required bindings
-        let orig_bound: HashSet<_> = sigma
-            .bindings()
-            .filter(|(v, _)| query_vars.contains(*v))
-            .map(|(v, _)| v.clone())
-            .collect();
-        let proj_bound: HashSet<_> = projected.bindings().map(|(v, _)| v.clone()).collect();
-
-        if proj_bound.len() < orig_bound.len() {
-            return;
-        }
-
-        let canonical = canonical_form(&projected);
-        if self.seen_answers.insert(canonical) {
-            self.pending_answers.push(projected);
         }
     }
 }

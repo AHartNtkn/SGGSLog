@@ -186,6 +186,7 @@ fn parse_directive(parser: &mut Parser) -> Result<Statement, ParseError> {
                     Ok(Statement::Directive(Directive::Set(setting)))
                 }
                 "next" => Ok(Statement::Directive(Directive::Next)),
+                "stats" => Ok(Statement::Directive(Directive::Stats)),
                 "quit" => Ok(Statement::Directive(Directive::Quit)),
                 _ => Err(parser.error(format!("unknown directive: {}", name))),
             }
