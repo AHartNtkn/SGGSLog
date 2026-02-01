@@ -11,6 +11,7 @@ mod left_split;
 mod move_op;
 mod query;
 mod resolution;
+mod split_common;
 mod splitting;
 mod trail;
 
@@ -23,7 +24,7 @@ pub use derivation::{
     DerivationResult, DerivationState, DerivationStep, InferenceRule, Model,
 };
 pub use extension::{sggs_extension, ExtensionResult};
-pub use factoring::sggs_factoring;
+pub use factoring::{is_factoring_applicable, sggs_factoring};
 pub use interpretation::{InitialInterpretation, TruthValue};
 pub use left_split::sggs_left_split;
 pub use move_op::{sggs_move, MoveError};

@@ -118,16 +118,26 @@ fn kernel_recursive_query_streams_incrementally() {
 
     let first = kernel.execute("?- (p X)").expect("query failed");
     assert!(
-        !contains_any(&first, &["exhausted", "no more", "no answers", "false", "none"]),
+        !contains_any(
+            &first,
+            &["exhausted", "no more", "no answers", "false", "none"]
+        ),
         "expected streaming answer, got {}",
         first
     );
-    assert!(first.contains("a"), "expected answer containing a, got {}", first);
+    assert!(
+        first.contains("a"),
+        "expected answer containing a, got {}",
+        first
+    );
 
     for _ in 0..2 {
         let next = kernel.execute(":next").expect("next failed");
         assert!(
-            !contains_any(&next, &["exhausted", "no more", "no answers", "false", "none"]),
+            !contains_any(
+                &next,
+                &["exhausted", "no more", "no answers", "false", "none"]
+            ),
             "expected additional answers, got {}",
             next
         );

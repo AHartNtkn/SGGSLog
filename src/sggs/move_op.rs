@@ -68,36 +68,37 @@ pub fn sggs_move(trail: &mut Trail, conflict_idx: usize) -> Result<(), MoveError
 
 /// Check if a clause is a conflict clause (all literals uniformly false in I[Γ]).
 fn is_conflict_clause(clause: &ConstrainedClause, trail: &Trail) -> bool {
-    let _init_interp = trail.initial_interpretation();
     let trail_interp = trail.interpretation();
 
     for lit in &clause.clause.literals {
-        // A literal is uniformly false if its complement is uniformly true
-        let complement = lit.negated();
-        if !is_uniformly_true_or_i_false_not_assigned(&complement, lit, trail, &trail_interp) {
+        if !is_literal_uniformly_false(lit, trail, &trail_interp) {
             return false;
         }
     }
     true
 }
 
-/// Check if a literal is uniformly true OR if the original literal is I-false and not assigned.
-fn is_uniformly_true_or_i_false_not_assigned(
-    complement: &crate::syntax::Literal,
-    original: &crate::syntax::Literal,
+/// Check if a literal is uniformly false in the trail interpretation.
+///
+/// A literal L is uniformly false if either:
+/// 1. Its complement ¬L is uniformly true in I[Γ], or
+/// 2. L is I-false (false in the initial interpretation) and not made true by I^p(Γ)
+fn is_literal_uniformly_false(
+    lit: &crate::syntax::Literal,
     trail: &Trail,
     trail_interp: &super::TrailInterpretation,
 ) -> bool {
-    // If complement is uniformly true, original is uniformly false
-    if trail_interp.is_uniformly_true(complement) {
+    // Check if complement is uniformly true (making lit uniformly false)
+    let complement = lit.negated();
+    if trail_interp.is_uniformly_true(&complement) {
         return true;
     }
 
-    // Otherwise, check if original is I-false and not made true by I^p(Γ)
+    // Check if lit is I-false and not assigned by the trail
     let init_interp = trail.initial_interpretation();
-    if init_interp.is_false(original) {
+    if init_interp.is_false(lit) {
         let partial = trail.partial_interpretation();
-        return !partial.contains_ground(original);
+        return !partial.contains_ground(lit);
     }
 
     false

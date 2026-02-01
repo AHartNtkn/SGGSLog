@@ -59,7 +59,9 @@ fn two_complementary_units_with_constant_should_be_unsatisfiable() {
     match result {
         Some(DerivationResult::Unsatisfiable) => {}
         Some(DerivationResult::Satisfiable(_)) => {
-            panic!("BUG: Got Satisfiable but theory is unsatisfiable - two complementary unit clauses")
+            panic!(
+                "BUG: Got Satisfiable but theory is unsatisfiable - two complementary unit clauses"
+            )
         }
         Some(DerivationResult::Timeout) => {
             panic!("BUG: Got Timeout unexpectedly")

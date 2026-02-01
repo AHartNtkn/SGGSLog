@@ -1,5 +1,6 @@
 //! SGGS-Splitting for clause decomposition.
 
+use super::split_common::build_complement_constraint;
 use super::ConstrainedClause;
 use crate::constraint::{AtomicConstraint, Constraint};
 use crate::syntax::Term;
@@ -143,54 +144,6 @@ pub fn sggs_splitting_on(
     Some(SplitResult {
         parts: vec![intersection_part, complement_part],
     })
-}
-
-/// Build the complement constraint for the split.
-fn build_complement_constraint(
-    clause: &ConstrainedClause,
-    clause_lit: &crate::syntax::Literal,
-    other_lit: &crate::syntax::Literal,
-) -> Constraint {
-    let mut complement_parts = Vec::new();
-
-    for (clause_arg, other_arg) in clause_lit.atom.args.iter().zip(other_lit.atom.args.iter()) {
-        if let Term::Var(_) = clause_arg {
-            match other_arg {
-                Term::Var(_) => {
-                    // No constraint contribution from variable vs variable
-                }
-                Term::App(fn_sym, _) => {
-                    if fn_sym.arity == 0 {
-                        // Constant: use NotIdentical constraint
-                        complement_parts.push(Constraint::Atomic(AtomicConstraint::NotIdentical(
-                            clause_arg.clone(),
-                            other_arg.clone(),
-                        )));
-                    } else {
-                        // Function application: use RootNotEquals constraint
-                        complement_parts.push(Constraint::Atomic(AtomicConstraint::RootNotEquals(
-                            clause_arg.clone(),
-                            fn_sym.name.clone(),
-                        )));
-                    }
-                }
-            }
-        }
-    }
-
-    if complement_parts.is_empty() {
-        return Constraint::False; // No complement possible
-    }
-
-    // The complement is the disjunction of negated constraints
-    // (x ≠ a ∨ y ≠ b) is the complement of (x = a ∧ y = b)
-    let mut result = complement_parts.pop().unwrap();
-    for part in complement_parts {
-        result = result.or(part);
-    }
-
-    // Combine with original clause constraint
-    clause.constraint.clone().and(result)
 }
 
 #[cfg(test)]

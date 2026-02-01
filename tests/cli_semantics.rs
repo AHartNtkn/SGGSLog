@@ -80,7 +80,14 @@ fn cli_projection_toggle_changes_visibility() {
     assert!(
         contains_any(
             &output_default,
-            &["no answers", "no more", "none", "no solution", "false", "exhausted"]
+            &[
+                "no answers",
+                "no more",
+                "none",
+                "no solution",
+                "false",
+                "exhausted"
+            ]
         ),
         "default projection should hide internal witnesses"
     );
@@ -93,7 +100,14 @@ fn cli_projection_toggle_changes_visibility() {
     assert!(
         !contains_any(
             &output_internal,
-            &["no answers", "no more", "none", "no solution", "false", "exhausted"]
+            &[
+                "no answers",
+                "no more",
+                "none",
+                "no solution",
+                "false",
+                "exhausted"
+            ]
         ),
         "allow_internal should produce a visible binding"
     );

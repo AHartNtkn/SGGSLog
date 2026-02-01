@@ -1,6 +1,9 @@
 //! SGGSLog Jupyter kernel binary.
 
-use sggslog::jupyter::{Kernel, protocol::*};
+use sggslog::jupyter::{
+    protocol::{ConnectionInfo, ExecuteRequest, KernelInfoReply, Message},
+    Kernel,
+};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use zeromq::{Socket, SocketRecv, SocketSend};
@@ -29,11 +32,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut hb_socket = zeromq::RepSocket::new();
 
     // Bind sockets
-    shell_socket.bind(&conn_info.endpoint(conn_info.shell_port)).await?;
-    iopub_socket.bind(&conn_info.endpoint(conn_info.iopub_port)).await?;
-    stdin_socket.bind(&conn_info.endpoint(conn_info.stdin_port)).await?;
-    control_socket.bind(&conn_info.endpoint(conn_info.control_port)).await?;
-    hb_socket.bind(&conn_info.endpoint(conn_info.hb_port)).await?;
+    shell_socket
+        .bind(&conn_info.endpoint(conn_info.shell_port))
+        .await?;
+    iopub_socket
+        .bind(&conn_info.endpoint(conn_info.iopub_port))
+        .await?;
+    stdin_socket
+        .bind(&conn_info.endpoint(conn_info.stdin_port))
+        .await?;
+    control_socket
+        .bind(&conn_info.endpoint(conn_info.control_port))
+        .await?;
+    hb_socket
+        .bind(&conn_info.endpoint(conn_info.hb_port))
+        .await?;
 
     eprintln!("SGGSLog kernel started");
 
@@ -101,7 +114,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Arc::clone(&iopub_socket),
                             Arc::clone(&kernel),
                             Arc::clone(&key),
-                        ).await;
+                        )
+                        .await;
                     }
                     Err(e) => {
                         eprintln!("Failed to parse message: {}", e);
@@ -128,19 +142,18 @@ async fn handle_shell_message(
     kernel: Arc<Mutex<Kernel>>,
     key: Arc<Vec<u8>>,
 ) {
-    // Send busy status at start of every message (required by Jupyter protocol)
-    {
-        let status_msg = Message {
-            identities: vec![b"status".to_vec()],
-            header: Header::new("status", &message.header.session),
-            parent_header: Some(message.header.clone()),
-            metadata: std::collections::HashMap::new(),
-            content: serde_json::json!({"execution_state": "busy"}),
-            buffers: Vec::new(),
-        };
-        let mut iopub = iopub_socket.lock().await;
-        send_pub_message(&mut *iopub, status_msg, &key).await;
-    }
+    // Helper to send on iopub
+    let send_iopub = |msg: Message| {
+        let iopub = Arc::clone(&iopub_socket);
+        let key = Arc::clone(&key);
+        async move {
+            let mut socket = iopub.lock().await;
+            send_zmq_message(&mut *socket, msg, &key).await;
+        }
+    };
+
+    // Send busy status (required by Jupyter protocol)
+    send_iopub(message.status("busy")).await;
 
     match message.header.msg_type.as_str() {
         "kernel_info_request" => {
@@ -148,112 +161,85 @@ async fn handle_shell_message(
                 "kernel_info_reply",
                 serde_json::to_value(KernelInfoReply::default()).unwrap(),
             );
-            send_message(shell_socket, reply, &key).await;
+            send_zmq_message(shell_socket, reply, &key).await;
         }
 
         "execute_request" => {
             if let Ok(request) = serde_json::from_value::<ExecuteRequest>(message.content.clone()) {
-                // Execute the code
-            let result = {
-                let mut k = kernel.lock().await;
-                k.execute(&request.code)
-            };
+                let result = {
+                    let mut k = kernel.lock().await;
+                    k.execute(&request.code)
+                };
 
-            // Send execute_input
-            {
-                let input_msg = Message {
-                    identities: vec![b"execute_input".to_vec()],
-                    header: Header::new("execute_input", &message.header.session),
-                    parent_header: Some(message.header.clone()),
-                    metadata: std::collections::HashMap::new(),
-                    content: serde_json::json!({
+                // Send execute_input
+                send_iopub(message.pub_message(
+                    "execute_input",
+                    serde_json::json!({
                         "code": request.code,
                         "execution_count": 1
                     }),
-                    buffers: Vec::new(),
-                };
-                let mut iopub = iopub_socket.lock().await;
-                send_pub_message(&mut *iopub, input_msg, &key).await;
-            }
+                ))
+                .await;
 
-            // Send result or error
-            match result {
-                Ok(output) => {
-                    if !output.is_empty() && !request.silent {
-                        // Send execute_result
-                        let result_msg = Message {
-                            identities: vec![b"execute_result".to_vec()],
-                            header: Header::new("execute_result", &message.header.session),
-                            parent_header: Some(message.header.clone()),
-                            metadata: std::collections::HashMap::new(),
-                            content: serde_json::json!({
+                match result {
+                    Ok(output) => {
+                        if !output.is_empty() && !request.silent {
+                            send_iopub(message.pub_message(
+                                "execute_result",
+                                serde_json::json!({
+                                    "execution_count": 1,
+                                    "data": {"text/plain": output},
+                                    "metadata": {}
+                                }),
+                            ))
+                            .await;
+                        }
+
+                        let reply = message.reply(
+                            "execute_reply",
+                            serde_json::json!({
+                                "status": "ok",
                                 "execution_count": 1,
-                                "data": {"text/plain": output},
-                                "metadata": {}
+                                "user_expressions": {}
                             }),
-                            buffers: Vec::new(),
-                        };
-                        let mut iopub = iopub_socket.lock().await;
-                        send_pub_message(&mut *iopub, result_msg, &key).await;
+                        );
+                        send_zmq_message(shell_socket, reply, &key).await;
                     }
+                    Err(e) => {
+                        send_iopub(message.pub_message(
+                            "stream",
+                            serde_json::json!({
+                                "name": "stderr",
+                                "text": format!("Error: {}\n", e.message)
+                            }),
+                        ))
+                        .await;
 
-                    // Send execute_reply
-                    let reply = message.reply(
-                        "execute_reply",
-                        serde_json::json!({
-                            "status": "ok",
-                            "execution_count": 1,
-                            "user_expressions": {}
-                        }),
-                    );
-                    send_message(shell_socket, reply, &key).await;
-                }
-                Err(e) => {
-                    // Send error stream
-                    let error_msg = Message {
-                        identities: vec![b"stream".to_vec()],
-                        header: Header::new("stream", &message.header.session),
-                        parent_header: Some(message.header.clone()),
-                        metadata: std::collections::HashMap::new(),
-                        content: serde_json::json!({
-                            "name": "stderr",
-                            "text": format!("Error: {}\n", e.message)
-                        }),
-                        buffers: Vec::new(),
-                    };
-                    {
-                        let mut iopub = iopub_socket.lock().await;
-                        send_pub_message(&mut *iopub, error_msg, &key).await;
+                        let reply = message.reply(
+                            "execute_reply",
+                            serde_json::json!({
+                                "status": "error",
+                                "execution_count": 1,
+                                "ename": "ExecutionError",
+                                "evalue": e.message,
+                                "traceback": []
+                            }),
+                        );
+                        send_zmq_message(shell_socket, reply, &key).await;
                     }
-
-                    // Send execute_reply with error
-                    let reply = message.reply(
-                        "execute_reply",
-                        serde_json::json!({
-                            "status": "error",
-                            "execution_count": 1,
-                            "ename": "ExecutionError",
-                            "evalue": e.message,
-                            "traceback": []
-                        }),
-                    );
-                    send_message(shell_socket, reply, &key).await;
                 }
             }
-            } // close if let Ok(request)
         }
 
         "is_complete_request" => {
-            // Always report complete for now
             let reply = message.reply(
                 "is_complete_reply",
                 serde_json::json!({"status": "complete"}),
             );
-            send_message(shell_socket, reply, &key).await;
+            send_zmq_message(shell_socket, reply, &key).await;
         }
 
         "complete_request" => {
-            // No completion support for now
             let reply = message.reply(
                 "complete_reply",
                 serde_json::json!({
@@ -264,7 +250,7 @@ async fn handle_shell_message(
                     "metadata": {}
                 }),
             );
-            send_message(shell_socket, reply, &key).await;
+            send_zmq_message(shell_socket, reply, &key).await;
         }
 
         _ => {
@@ -272,34 +258,15 @@ async fn handle_shell_message(
         }
     }
 
-    // Send idle status at end of every message (required by Jupyter protocol)
-    {
-        let status_msg = Message {
-            identities: vec![b"status".to_vec()],
-            header: Header::new("status", &message.header.session),
-            parent_header: Some(message.header.clone()),
-            metadata: std::collections::HashMap::new(),
-            content: serde_json::json!({"execution_state": "idle"}),
-            buffers: Vec::new(),
-        };
-        let mut iopub = iopub_socket.lock().await;
-        send_pub_message(&mut *iopub, status_msg, &key).await;
-    }
+    // Send idle status (required by Jupyter protocol)
+    send_iopub(message.status("idle")).await;
 }
 
-async fn send_message(socket: &mut zeromq::RouterSocket, msg: Message, key: &[u8]) {
+async fn send_zmq_message<S: SocketSend>(socket: &mut S, msg: Message, key: &[u8]) {
     let frames = msg.to_frames(key);
     let zmq_msg = frames_to_zmq_message(frames);
     if let Err(e) = socket.send(zmq_msg).await {
         eprintln!("Failed to send message: {}", e);
-    }
-}
-
-async fn send_pub_message(socket: &mut zeromq::PubSocket, msg: Message, key: &[u8]) {
-    let frames = msg.to_frames(key);
-    let zmq_msg = frames_to_zmq_message(frames);
-    if let Err(e) = socket.send(zmq_msg).await {
-        eprintln!("Failed to send pub message: {}", e);
     }
 }
 

@@ -72,6 +72,24 @@ impl AtomicConstraint {
             }
         }
     }
+
+    /// Apply a substitution to this atomic constraint.
+    pub fn apply_subst(&self, sigma: &Substitution) -> AtomicConstraint {
+        match self {
+            AtomicConstraint::Identical(t1, t2) => {
+                AtomicConstraint::Identical(sigma.apply_to_term(t1), sigma.apply_to_term(t2))
+            }
+            AtomicConstraint::NotIdentical(t1, t2) => {
+                AtomicConstraint::NotIdentical(sigma.apply_to_term(t1), sigma.apply_to_term(t2))
+            }
+            AtomicConstraint::RootEquals(t, s) => {
+                AtomicConstraint::RootEquals(sigma.apply_to_term(t), s.clone())
+            }
+            AtomicConstraint::RootNotEquals(t, s) => {
+                AtomicConstraint::RootNotEquals(sigma.apply_to_term(t), s.clone())
+            }
+        }
+    }
 }
 
 #[cfg(test)]

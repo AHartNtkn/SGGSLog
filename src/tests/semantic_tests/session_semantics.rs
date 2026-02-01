@@ -124,10 +124,7 @@ fn session_positive_query_streams_multiple_answers_without_exhaustion() {
         ])))
         .expect("execute_statement failed");
 
-    let stmt = Statement::Query(Query::new(vec![Literal::pos(
-        "p",
-        vec![Term::var("X")],
-    )]));
+    let stmt = Statement::Query(Query::new(vec![Literal::pos("p", vec![Term::var("X")])]));
     let mut qr = match session
         .execute_statement(stmt)
         .expect("execute_statement failed")

@@ -370,7 +370,11 @@ fn notebook_basic_facts_section() {
     assert!(r2.contains("ok"), "fact should return ok: {}", r2);
 
     let r3 = kernel.execute("?- person alice").expect("query");
-    assert!(r3.contains("true"), "ground query should return true: {}", r3);
+    assert!(
+        r3.contains("true"),
+        "ground query should return true: {}",
+        r3
+    );
 
     let r4 = kernel.execute("?- person X").expect("query with var");
     assert!(
@@ -396,11 +400,7 @@ fn notebook_rules_section() {
     kernel.execute("person X -> mortal X").expect("rule");
 
     let r = kernel.execute("?- mortal alice").expect("query");
-    assert!(
-        r.contains("true"),
-        "derived fact should be true: {}",
-        r
-    );
+    assert!(r.contains("true"), "derived fact should be true: {}", r);
 }
 
 #[test]
@@ -499,7 +499,9 @@ fn notebook_peano_arithmetic_section() {
         .expect("add recursive");
 
     // Test addition: 1 + 2 = ?
-    let r1 = kernel.execute("?- add (s z) (s (s z)) R").expect("add query");
+    let r1 = kernel
+        .execute("?- add (s z) (s (s z)) R")
+        .expect("add query");
     assert!(
         r1.contains("s(s(s(z)))") || r1.contains("s (s (s"),
         "1 + 2 should equal 3: {}",
@@ -517,7 +519,9 @@ fn notebook_peano_arithmetic_section() {
     );
 
     // Test enumeration: ? + ? = 2
-    let r3 = kernel.execute("?- add X Y (s (s z))").expect("partition query");
+    let r3 = kernel
+        .execute("?- add X Y (s (s z))")
+        .expect("partition query");
     // Should get first answer (one of the partitions)
     assert!(
         r3.contains("X =") || r3.contains("Y =") || r3.contains("z"),

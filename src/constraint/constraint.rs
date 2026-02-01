@@ -169,6 +169,101 @@ impl Constraint {
             Constraint::Not(inner) => inner.evaluate(subst).map(|v| !v),
         }
     }
+
+    /// Apply a substitution to this constraint.
+    pub fn apply_subst(&self, sigma: &crate::unify::Substitution) -> Constraint {
+        match self {
+            Constraint::True => Constraint::True,
+            Constraint::False => Constraint::False,
+            Constraint::Atomic(a) => Constraint::Atomic(a.apply_subst(sigma)),
+            Constraint::And(left, right) => left.apply_subst(sigma).and(right.apply_subst(sigma)),
+            Constraint::Or(left, right) => left.apply_subst(sigma).or(right.apply_subst(sigma)),
+            Constraint::Not(inner) => !inner.apply_subst(sigma),
+        }
+    }
+
+    /// Simplify a constraint after substitution by evaluating ground RootEquals/RootNotEquals.
+    ///
+    /// After applying a substitution, some constraints become trivially true or false:
+    /// - `RootEquals(f(w), f)` → True (root of f(w) is f)
+    /// - `RootEquals(f(w), g)` → False (root of f(w) is not g)
+    /// - `Identical(t, t)` → True
+    pub fn simplify_ground(&self) -> Constraint {
+        match self {
+            Constraint::True => Constraint::True,
+            Constraint::False => Constraint::False,
+            Constraint::Atomic(a) => simplify_atomic_ground(a),
+            Constraint::And(left, right) => {
+                let left_simp = left.simplify_ground();
+                let right_simp = right.simplify_ground();
+                match (&left_simp, &right_simp) {
+                    (Constraint::True, _) => right_simp,
+                    (_, Constraint::True) => left_simp,
+                    (Constraint::False, _) | (_, Constraint::False) => Constraint::False,
+                    _ => left_simp.and(right_simp),
+                }
+            }
+            Constraint::Or(left, right) => {
+                let left_simp = left.simplify_ground();
+                let right_simp = right.simplify_ground();
+                match (&left_simp, &right_simp) {
+                    (Constraint::True, _) | (_, Constraint::True) => Constraint::True,
+                    (Constraint::False, _) => right_simp,
+                    (_, Constraint::False) => left_simp,
+                    _ => left_simp.or(right_simp),
+                }
+            }
+            Constraint::Not(inner) => {
+                let inner_simp = inner.simplify_ground();
+                match inner_simp {
+                    Constraint::True => Constraint::False,
+                    Constraint::False => Constraint::True,
+                    other => !other,
+                }
+            }
+        }
+    }
+}
+
+/// Simplify an atomic constraint after substitution.
+fn simplify_atomic_ground(a: &AtomicConstraint) -> Constraint {
+    use crate::syntax::Term;
+    match a {
+        AtomicConstraint::RootEquals(t, expected_root) => match t {
+            Term::App(sym, _) => {
+                if &sym.name == expected_root {
+                    Constraint::True
+                } else {
+                    Constraint::False
+                }
+            }
+            Term::Var(_) => Constraint::Atomic(a.clone()),
+        },
+        AtomicConstraint::RootNotEquals(t, expected_root) => match t {
+            Term::App(sym, _) => {
+                if &sym.name == expected_root {
+                    Constraint::False
+                } else {
+                    Constraint::True
+                }
+            }
+            Term::Var(_) => Constraint::Atomic(a.clone()),
+        },
+        AtomicConstraint::Identical(t1, t2) => {
+            if t1 == t2 {
+                Constraint::True
+            } else {
+                Constraint::Atomic(a.clone())
+            }
+        }
+        AtomicConstraint::NotIdentical(t1, t2) => {
+            if t1 == t2 {
+                Constraint::False
+            } else {
+                Constraint::Atomic(a.clone())
+            }
+        }
+    }
 }
 
 /// Convert a constraint to standard form recursively.

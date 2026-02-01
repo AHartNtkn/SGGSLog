@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{ConstrainedClause, Trail};
-use crate::constraint::{AtomicConstraint, Constraint};
+use crate::constraint::Constraint;
 use crate::syntax::Term;
 use crate::unify::{unify_literals, Substitution, UnifyResult};
 
@@ -51,12 +51,6 @@ fn is_disposable_at_index(clause: &ConstrainedClause, trail: &Trail, idx: usize)
     }
 
     let selected = clause.selected_literal();
-
-    // First, check if this clause has any pcgi's (proper ground instances).
-    // If all instances are complementary (ccgi), the clause is NOT disposable.
-    // A clause has no pcgi's if all complements are already in I^p of the prefix.
-    let prefix = trail.prefix(idx);
-    let _prefix_partial = prefix.partial_interpretation();
 
     // For a clause to have pcgi's, there must exist some ground instance whose
     // complement is NOT in I^p(prefix). We can't enumerate all instances,
@@ -309,11 +303,11 @@ fn constraint_entails_after_subst(
     mgu: &Substitution,
 ) -> bool {
     // Apply substitution to both constraints
-    let earlier_applied = apply_subst_to_constraint(earlier_constraint, mgu);
-    let clause_applied = apply_subst_to_constraint(clause_constraint, mgu);
+    let earlier_applied = earlier_constraint.apply_subst(mgu);
+    let clause_applied = clause_constraint.apply_subst(mgu);
 
     // Simplify the clause constraint after substitution
-    let clause_simplified = simplify_after_subst(&clause_applied);
+    let clause_simplified = clause_applied.simplify_ground();
 
     // Check if earlier (after subst) entails clause (after subst and simplification)
     // For True entails anything trivially true, we return true
@@ -329,129 +323,6 @@ fn constraint_entails_after_subst(
     // General case: A |= B iff A ∧ ¬B is unsatisfiable
     let a_and_not_b = earlier_applied.and(!clause_simplified);
     !a_and_not_b.is_satisfiable()
-}
-
-/// Apply substitution to a constraint.
-fn apply_subst_to_constraint(c: &Constraint, sigma: &Substitution) -> Constraint {
-    match c {
-        Constraint::True => Constraint::True,
-        Constraint::False => Constraint::False,
-        Constraint::Atomic(a) => Constraint::Atomic(apply_subst_to_atomic(a, sigma)),
-        Constraint::And(left, right) => {
-            apply_subst_to_constraint(left, sigma).and(apply_subst_to_constraint(right, sigma))
-        }
-        Constraint::Or(left, right) => {
-            apply_subst_to_constraint(left, sigma).or(apply_subst_to_constraint(right, sigma))
-        }
-        Constraint::Not(inner) => !apply_subst_to_constraint(inner, sigma),
-    }
-}
-
-/// Apply substitution to an atomic constraint.
-fn apply_subst_to_atomic(a: &AtomicConstraint, sigma: &Substitution) -> AtomicConstraint {
-    match a {
-        AtomicConstraint::Identical(t1, t2) => {
-            AtomicConstraint::Identical(sigma.apply_to_term(t1), sigma.apply_to_term(t2))
-        }
-        AtomicConstraint::NotIdentical(t1, t2) => {
-            AtomicConstraint::NotIdentical(sigma.apply_to_term(t1), sigma.apply_to_term(t2))
-        }
-        AtomicConstraint::RootEquals(t, s) => {
-            AtomicConstraint::RootEquals(sigma.apply_to_term(t), s.clone())
-        }
-        AtomicConstraint::RootNotEquals(t, s) => {
-            AtomicConstraint::RootNotEquals(sigma.apply_to_term(t), s.clone())
-        }
-    }
-}
-
-/// Simplify a constraint after substitution by evaluating RootEquals/RootNotEquals.
-fn simplify_after_subst(c: &Constraint) -> Constraint {
-    match c {
-        Constraint::True => Constraint::True,
-        Constraint::False => Constraint::False,
-        Constraint::Atomic(a) => simplify_atomic_after_subst(a),
-        Constraint::And(left, right) => {
-            let left_simp = simplify_after_subst(left);
-            let right_simp = simplify_after_subst(right);
-            match (&left_simp, &right_simp) {
-                (Constraint::True, _) => right_simp,
-                (_, Constraint::True) => left_simp,
-                (Constraint::False, _) | (_, Constraint::False) => Constraint::False,
-                _ => left_simp.and(right_simp),
-            }
-        }
-        Constraint::Or(left, right) => {
-            let left_simp = simplify_after_subst(left);
-            let right_simp = simplify_after_subst(right);
-            match (&left_simp, &right_simp) {
-                (Constraint::True, _) | (_, Constraint::True) => Constraint::True,
-                (Constraint::False, _) => right_simp,
-                (_, Constraint::False) => left_simp,
-                _ => left_simp.or(right_simp),
-            }
-        }
-        Constraint::Not(inner) => {
-            let inner_simp = simplify_after_subst(inner);
-            match inner_simp {
-                Constraint::True => Constraint::False,
-                Constraint::False => Constraint::True,
-                other => !other,
-            }
-        }
-    }
-}
-
-/// Simplify an atomic constraint after substitution.
-///
-/// RootEquals(f(w), f) -> True because root of f(w) is f.
-/// RootEquals(f(w), g) -> False because root of f(w) is not g.
-/// RootNotEquals(f(w), f) -> False.
-/// RootNotEquals(f(w), g) -> True.
-fn simplify_atomic_after_subst(a: &AtomicConstraint) -> Constraint {
-    match a {
-        AtomicConstraint::RootEquals(t, expected_root) => {
-            match t {
-                Term::App(sym, _) => {
-                    // Root of f(w) is f
-                    if &sym.name == expected_root {
-                        Constraint::True
-                    } else {
-                        Constraint::False
-                    }
-                }
-                Term::Var(_) => {
-                    // Variable: keep the constraint as-is
-                    Constraint::Atomic(a.clone())
-                }
-            }
-        }
-        AtomicConstraint::RootNotEquals(t, expected_root) => match t {
-            Term::App(sym, _) => {
-                if &sym.name == expected_root {
-                    Constraint::False
-                } else {
-                    Constraint::True
-                }
-            }
-            Term::Var(_) => Constraint::Atomic(a.clone()),
-        },
-        AtomicConstraint::Identical(t1, t2) => {
-            // If both are the same term after substitution, it's trivially true
-            if t1 == t2 {
-                Constraint::True
-            } else {
-                Constraint::Atomic(a.clone())
-            }
-        }
-        AtomicConstraint::NotIdentical(t1, t2) => {
-            if t1 == t2 {
-                Constraint::False
-            } else {
-                Constraint::Atomic(a.clone())
-            }
-        }
-    }
 }
 
 #[cfg(test)]

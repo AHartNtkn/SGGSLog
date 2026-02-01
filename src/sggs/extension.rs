@@ -248,7 +248,8 @@ fn generate_premise_combinations(
 ) {
     if depth == premise_options.len() {
         // Build the result from this combination
-        if let Some(result) = build_side_premise_result(trail, clause, i_true_indices, current_combo)
+        if let Some(result) =
+            build_side_premise_result(trail, clause, i_true_indices, current_combo)
         {
             results.push(result);
         }

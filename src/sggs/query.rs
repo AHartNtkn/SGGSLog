@@ -180,10 +180,20 @@ impl QueryStream {
 
             if query_lit.positive {
                 // Positive query - match against true atoms/patterns
-                self.extract_positive_single_literal(&query_lit, &true_atoms, &true_patterns, &query_vars);
+                self.extract_positive_single_literal(
+                    &query_lit,
+                    &true_atoms,
+                    &true_patterns,
+                    &query_vars,
+                );
             } else {
                 // Negative query - check for absence from model
-                self.extract_negative_single_literal(&query_lit, &true_atoms, &true_patterns, &query_vars);
+                self.extract_negative_single_literal(
+                    &query_lit,
+                    &true_atoms,
+                    &true_patterns,
+                    &query_vars,
+                );
             }
             return;
         }
@@ -287,7 +297,9 @@ impl QueryStream {
                 if !true_atoms.contains(&grounded_lit.atom) {
                     // Also check patterns
                     let covered_by_pattern = true_patterns.iter().any(|pattern| {
-                        if !pattern.positive || pattern.atom.predicate != grounded_lit.atom.predicate {
+                        if !pattern.positive
+                            || pattern.atom.predicate != grounded_lit.atom.predicate
+                        {
                             return false;
                         }
                         let grounded_as_pos = Literal {
@@ -388,12 +400,7 @@ impl QueryStream {
                 // Compose substitutions
                 let combined = current_subst.compose(&sigma);
                 self.find_multi_literal_answers_incremental(
-                    rest,
-                    true_atoms,
-                    combined,
-                    query_vars,
-                    answers,
-                    seen,
+                    rest, true_atoms, combined, query_vars, answers, seen,
                 );
             }
         }
@@ -401,12 +408,8 @@ impl QueryStream {
 
     /// Add an answer if it's new (not seen before).
     fn add_answer_if_new(&mut self, sigma: &Substitution, query_vars: &HashSet<Var>) {
-        let projected = project_substitution(
-            sigma,
-            query_vars,
-            self.user_signature.as_ref(),
-            self.policy,
-        );
+        let projected =
+            project_substitution(sigma, query_vars, self.user_signature.as_ref(), self.policy);
 
         // Check projection didn't lose required bindings
         let orig_bound: HashSet<_> = sigma
@@ -569,4 +572,3 @@ pub fn answer_query_projected(
         policy,
     )
 }
-

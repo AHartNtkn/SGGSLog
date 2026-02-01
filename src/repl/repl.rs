@@ -359,7 +359,10 @@ mod tests {
 
         let first = repl.process_line("?- (p X)").unwrap();
         assert!(
-            !contains_any(&first, &["exhausted", "no more", "no answers", "false", "none"]),
+            !contains_any(
+                &first,
+                &["exhausted", "no more", "no answers", "false", "none"]
+            ),
             "expected streaming answer, got {}",
             first
         );
@@ -372,7 +375,10 @@ mod tests {
         for _ in 0..2 {
             let next = repl.process_line(":next").unwrap();
             assert!(
-                !contains_any(&next, &["exhausted", "no more", "no answers", "false", "none"]),
+                !contains_any(
+                    &next,
+                    &["exhausted", "no more", "no answers", "false", "none"]
+                ),
                 "expected additional answers, got {}",
                 next
             );

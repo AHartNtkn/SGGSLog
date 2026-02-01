@@ -53,7 +53,7 @@ pub struct Message {
 }
 
 impl Message {
-    /// Create a reply to this message.
+    /// Create a reply to this message (for shell/control sockets).
     pub fn reply(&self, msg_type: &str, content: serde_json::Value) -> Message {
         Message {
             identities: self.identities.clone(),
@@ -63,6 +63,26 @@ impl Message {
             content,
             buffers: Vec::new(),
         }
+    }
+
+    /// Create a pub message (for iopub socket) with this message as parent.
+    pub fn pub_message(&self, msg_type: &str, content: serde_json::Value) -> Message {
+        Message {
+            identities: vec![msg_type.as_bytes().to_vec()],
+            header: Header::new(msg_type, &self.header.session),
+            parent_header: Some(self.header.clone()),
+            metadata: HashMap::new(),
+            content,
+            buffers: Vec::new(),
+        }
+    }
+
+    /// Create a status message (busy or idle) with this message as parent.
+    pub fn status(&self, execution_state: &str) -> Message {
+        self.pub_message(
+            "status",
+            serde_json::json!({"execution_state": execution_state}),
+        )
     }
 
     /// Parse a message from ZMQ frames.
@@ -89,8 +109,7 @@ impl Message {
 
         // Verify HMAC if key is provided
         if !key.is_empty() {
-            let mut mac = Hmac::<Sha256>::new_from_slice(key)
-                .map_err(|_| "Invalid HMAC key")?;
+            let mut mac = Hmac::<Sha256>::new_from_slice(key).map_err(|_| "Invalid HMAC key")?;
             mac.update(header_bytes);
             mac.update(parent_header_bytes);
             mac.update(metadata_bytes);

@@ -1,5 +1,7 @@
 //! SGGS Left-Splitting (l-split) for conflict solving.
 
+use super::factoring::is_factoring_applicable;
+use super::split_common::build_complement_constraint;
 use super::{ConstrainedClause, SplitResult};
 use crate::constraint::{AtomicConstraint, Constraint};
 use crate::syntax::Term;
@@ -141,88 +143,12 @@ pub fn sggs_left_split(
     })
 }
 
-/// Check if factoring is applicable on a clause (condition †).
-///
-/// Factoring is applicable if the clause has another same-sign literal
-/// that unifies with its selected literal.
-fn is_factoring_applicable(clause: &ConstrainedClause) -> bool {
-    let selected = clause.selected_literal();
-    let selected_sign = selected.positive;
-
-    for (idx, lit) in clause.clause.literals.iter().enumerate() {
-        if idx == clause.selected {
-            continue;
-        }
-        // Same sign required for factoring
-        if lit.positive != selected_sign {
-            continue;
-        }
-        // Check if they unify
-        if let UnifyResult::Success(_) = unify_literals(selected, lit) {
-            return true;
-        }
-    }
-    false
-}
-
 /// Extract a Var from a Term::Var
 fn extract_var(term: &Term) -> crate::syntax::Var {
     match term {
         Term::Var(v) => v.clone(),
         _ => panic!("expected Var"),
     }
-}
-
-/// Build the complement constraint for the split.
-fn build_complement_constraint(
-    clause: &ConstrainedClause,
-    clause_lit: &crate::syntax::Literal,
-    conflict_lit: &crate::syntax::Literal,
-) -> Constraint {
-    let mut complement_parts = Vec::new();
-
-    for (clause_arg, conflict_arg) in clause_lit
-        .atom
-        .args
-        .iter()
-        .zip(conflict_lit.atom.args.iter())
-    {
-        if let Term::Var(_) = clause_arg {
-            match conflict_arg {
-                Term::Var(_) => {
-                    // No constraint contribution from variable vs variable
-                }
-                Term::App(fn_sym, _) => {
-                    if fn_sym.arity == 0 {
-                        // Constant: use NotIdentical constraint
-                        complement_parts.push(Constraint::Atomic(AtomicConstraint::NotIdentical(
-                            clause_arg.clone(),
-                            conflict_arg.clone(),
-                        )));
-                    } else {
-                        // Function application: use RootNotEquals constraint
-                        complement_parts.push(Constraint::Atomic(AtomicConstraint::RootNotEquals(
-                            clause_arg.clone(),
-                            fn_sym.name.clone(),
-                        )));
-                    }
-                }
-            }
-        }
-    }
-
-    if complement_parts.is_empty() {
-        return Constraint::False; // No complement possible
-    }
-
-    // The complement is the disjunction of negated constraints
-    let mut result = complement_parts.pop().unwrap();
-    for part in complement_parts {
-        result = result.or(part);
-    }
-
-    // Combine with original clause constraint
-    clause.constraint.clone().and(result)
 }
 
 #[cfg(test)]

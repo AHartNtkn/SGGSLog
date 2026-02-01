@@ -9,8 +9,14 @@ fn main() {
     let c = Term::constant("c");
 
     let mut theory = Theory::new();
-    theory.add_clause(Clause::new(vec![Literal::pos("edge", vec![a.clone(), b.clone()])]));
-    theory.add_clause(Clause::new(vec![Literal::pos("edge", vec![b.clone(), c.clone()])]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "edge",
+        vec![a.clone(), b.clone()],
+    )]));
+    theory.add_clause(Clause::new(vec![Literal::pos(
+        "edge",
+        vec![b.clone(), c.clone()],
+    )]));
     theory.add_clause(Clause::new(vec![
         Literal::neg("edge", vec![Term::var("X"), Term::var("Y")]),
         Literal::pos("path", vec![Term::var("X"), Term::var("Y")]),
@@ -53,5 +59,8 @@ fn main() {
         println!("  Clause satisfied: {}", satisfied);
     }
 
-    println!("\n=== is_complete result: {} ===", state.trail().is_complete(&theory));
+    println!(
+        "\n=== is_complete result: {} ===",
+        state.trail().is_complete(&theory)
+    );
 }

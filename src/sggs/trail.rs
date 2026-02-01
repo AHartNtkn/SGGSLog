@@ -221,12 +221,19 @@ impl Trail {
 
         // For ground clauses, use the standard check
         if clause.is_ground() {
-            return clause.literals.iter().any(|lit| interp.is_uniformly_true(lit));
+            return clause
+                .literals
+                .iter()
+                .any(|lit| interp.is_uniformly_true(lit));
         }
 
         // For non-ground clauses:
         // 1. Check if any literal is uniformly true (handles all instances)
-        if clause.literals.iter().any(|lit| interp.is_uniformly_true(lit)) {
+        if clause
+            .literals
+            .iter()
+            .any(|lit| interp.is_uniformly_true(lit))
+        {
             return true;
         }
 
@@ -235,10 +242,8 @@ impl Trail {
         //    is NOT an instance of (subsumed by) any selected I-false literal.
         //    This means some instances of L remain true in I[Γ], satisfying those instances.
         for lit in &clause.literals {
-            if self.initial_interp.is_true(lit) {
-                if !self.is_i_true_uniformly_blocked(lit) {
-                    return true;
-                }
+            if self.initial_interp.is_true(lit) && !self.is_i_true_uniformly_blocked(lit) {
+                return true;
             }
         }
 
@@ -480,38 +485,31 @@ impl<'a> TrailInterpretation<'a> {
                         // Non-ground lit: uniformly true only if:
                         // 1. lit is an INSTANCE of selected (selected covers all ground instances), AND
                         // 2. No I-true selected literal blocks any instance (complement not selected)
-                        if clause.constraint.is_satisfiable() {
-                            if super::extension::is_instance_of(lit, selected) {
-                                // Check that no I-true selected literal blocks any instance
-                                // A blocking literal is an I-true selected literal that unifies
-                                // with the complement of lit (making some instance false)
-                                let complement = lit.negated();
-                                let mut blocked = false;
-                                for other_clause in &self.trail.clauses {
-                                    let other_selected = other_clause.selected_literal();
-                                    // I-true selected literals can block instances
-                                    if self.trail.initial_interp.is_true(other_selected) {
-                                        if complement.positive == other_selected.positive
-                                            && complement.atom.predicate
-                                                == other_selected.atom.predicate
-                                        {
-                                            // If complement unifies with other_selected,
-                                            // some instance of lit is false
-                                            if crate::unify::unify_literals(
-                                                &complement,
-                                                other_selected,
-                                            )
-                                            .is_success()
-                                            {
-                                                blocked = true;
-                                                break;
-                                            }
-                                        }
-                                    }
+                        if clause.constraint.is_satisfiable()
+                            && super::extension::is_instance_of(lit, selected)
+                        {
+                            // Check that no I-true selected literal blocks any instance
+                            // A blocking literal is an I-true selected literal that unifies
+                            // with the complement of lit (making some instance false)
+                            let complement = lit.negated();
+                            let mut blocked = false;
+                            for other_clause in &self.trail.clauses {
+                                let other_selected = other_clause.selected_literal();
+                                // I-true selected literals can block instances
+                                if self.trail.initial_interp.is_true(other_selected)
+                                    && complement.positive == other_selected.positive
+                                    && complement.atom.predicate == other_selected.atom.predicate
+                                    && crate::unify::unify_literals(&complement, other_selected)
+                                        .is_success()
+                                {
+                                    // complement unifies with other_selected,
+                                    // some instance of lit is false
+                                    blocked = true;
+                                    break;
                                 }
-                                if !blocked {
-                                    return true;
-                                }
+                            }
+                            if !blocked {
+                                return true;
                             }
                         }
                     }

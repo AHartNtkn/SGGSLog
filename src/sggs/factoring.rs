@@ -5,6 +5,34 @@ use crate::constraint::{AtomicConstraint, Constraint};
 use crate::syntax::{Clause, Term};
 use crate::unify::{unify_literals, UnifyResult};
 
+/// Check if factoring is applicable on a clause.
+///
+/// Factoring is applicable when another same-sign literal
+/// with the same predicate unifies with the selected literal.
+pub fn is_factoring_applicable(clause: &ConstrainedClause) -> bool {
+    let selected = clause.selected_literal();
+    let selected_sign = selected.positive;
+
+    for (idx, lit) in clause.clause.literals.iter().enumerate() {
+        if idx == clause.selected {
+            continue;
+        }
+        // Same sign required for factoring
+        if lit.positive != selected_sign {
+            continue;
+        }
+        // Same predicate required
+        if lit.atom.predicate != selected.atom.predicate {
+            continue;
+        }
+        // Check if they unify
+        if let UnifyResult::Success(_) = unify_literals(selected, lit) {
+            return true;
+        }
+    }
+    false
+}
+
 /// SGGS-Factoring: factor a clause by unifying a non-selected literal with the selected literal.
 ///
 /// This is used during conflict solving to avoid losing assignments after a move.
@@ -61,7 +89,6 @@ pub fn sggs_factoring(
 
     // Remove duplicate literals (the other literal is now identical to selected after unification)
     let mut unique_literals = Vec::new();
-    let mut seen_indices = std::collections::HashSet::new();
     for (idx, lit) in factored_literals.iter().enumerate() {
         if idx == other_lit_idx {
             continue; // Skip the factored literal
@@ -70,7 +97,6 @@ pub fn sggs_factoring(
         let found_dup = unique_literals.iter().any(|l| l == lit);
         if !found_dup {
             unique_literals.push(lit.clone());
-            seen_indices.insert(idx);
         }
     }
 

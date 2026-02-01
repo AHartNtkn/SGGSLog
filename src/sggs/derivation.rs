@@ -1,9 +1,9 @@
 //! SGGS derivation loop.
 
 use super::{
-    is_disposable, sggs_deletion, sggs_extension, sggs_factoring, sggs_left_split, sggs_move,
-    sggs_resolution, sggs_splitting, ConstrainedClause, ExtensionResult, InitialInterpretation,
-    ResolutionResult, Trail,
+    is_disposable, is_factoring_applicable, sggs_deletion, sggs_extension, sggs_factoring,
+    sggs_left_split, sggs_move, sggs_resolution, sggs_splitting, ConstrainedClause,
+    ExtensionResult, InitialInterpretation, ResolutionResult, Trail,
 };
 use crate::syntax::{Atom, Literal};
 use crate::theory::Theory;
@@ -290,32 +290,6 @@ fn is_deletion_applicable(trail: &Trail) -> bool {
 fn find_conflict_clause(trail: &Trail) -> Option<usize> {
     // Use the Trail's own find_conflict method which correctly uses prefix interpretation
     trail.find_conflict()
-}
-
-/// Check if factoring is applicable on a conflict clause.
-/// Factoring applies when another same-sign literal unifies with the selected literal.
-fn is_factoring_applicable(clause: &ConstrainedClause) -> bool {
-    let selected = clause.selected_literal();
-    let selected_sign = selected.positive;
-
-    for (idx, lit) in clause.clause.literals.iter().enumerate() {
-        if idx == clause.selected {
-            continue;
-        }
-        // Same sign required for factoring
-        if lit.positive != selected_sign {
-            continue;
-        }
-        // Check same predicate
-        if lit.atom.predicate != selected.atom.predicate {
-            continue;
-        }
-        // Check if they unify
-        if let UnifyResult::Success(_) = unify_literals(selected, lit) {
-            return true;
-        }
-    }
-    false
 }
 
 /// Check if move is applicable for a conflict clause.

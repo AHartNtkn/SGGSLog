@@ -204,20 +204,21 @@ fn parse_query_conjunction(parser: &mut Parser) -> Result<Vec<Literal>, ParseErr
     let mut literals = Vec::new();
 
     // Parse first literal
-    let first = parse_query_literal(parser)?;
+    let first = parse_literal(parser)?;
     literals.push(first);
 
     // Parse additional literals connected by ∧ or &
     while matches!(parser.current, Token::And) {
         parser.advance()?;
-        let lit = parse_query_literal(parser)?;
+        let lit = parse_literal(parser)?;
         literals.push(lit);
     }
 
     Ok(literals)
 }
 
-fn parse_query_literal(parser: &mut Parser) -> Result<Literal, ParseError> {
+/// Parse a literal (positive or negative atom).
+fn parse_literal(parser: &mut Parser) -> Result<Literal, ParseError> {
     // Check for negation
     let positive = if matches!(parser.current, Token::Not) {
         parser.advance()?;
@@ -246,34 +247,17 @@ fn parse_clause_literals(parser: &mut Parser) -> Result<Vec<Literal>, ParseError
     let mut literals = Vec::new();
 
     // Parse first literal
-    let first = parse_clause_literal(parser)?;
+    let first = parse_literal(parser)?;
     literals.push(first);
 
     // Parse additional literals connected by ∨ or |
     while matches!(parser.current, Token::Or) {
         parser.advance()?;
-        let lit = parse_clause_literal(parser)?;
+        let lit = parse_literal(parser)?;
         literals.push(lit);
     }
 
     Ok(literals)
-}
-
-fn parse_clause_literal(parser: &mut Parser) -> Result<Literal, ParseError> {
-    // Check for negation
-    let positive = if matches!(parser.current, Token::Not) {
-        parser.advance()?;
-        false
-    } else {
-        true
-    };
-
-    let atom = parse_atom(parser)?;
-    if positive {
-        Ok(Literal::positive(atom))
-    } else {
-        Ok(Literal::negative(atom))
-    }
 }
 
 fn parse_formula_statement(parser: &mut Parser) -> Result<Statement, ParseError> {
