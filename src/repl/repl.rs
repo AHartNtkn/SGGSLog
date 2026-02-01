@@ -97,7 +97,13 @@ impl Repl {
                         message: "Usage: :load <filename>".to_string(),
                     });
                 }
-                let result = self.session.load_file(args)?;
+                // Strip surrounding quotes if present
+                let path = args
+                    .trim_start_matches('"')
+                    .trim_end_matches('"')
+                    .trim_start_matches('\'')
+                    .trim_end_matches('\'');
+                let result = self.session.load_file(path)?;
                 Ok(format_directive_result(&result))
             }
             _ => Err(ReplError {
@@ -217,7 +223,7 @@ fn format_query_result(result: &QueryResult) -> String {
                 bindings.join(", ").to_string()
             }
         }
-        QueryResult::Exhausted => "no (more) answers.".to_string(),
+        QueryResult::Exhausted => "no more answers.".to_string(),
         QueryResult::Timeout => "timeout.".to_string(),
     }
 }
