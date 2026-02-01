@@ -136,6 +136,39 @@ impl Constraint {
     pub fn intersects(&self, other: &Constraint) -> bool {
         self.intersect(other).is_satisfiable()
     }
+
+    /// Evaluate this constraint under a substitution.
+    ///
+    /// Returns:
+    /// - `Some(true)` if the constraint is definitely satisfied
+    /// - `Some(false)` if the constraint is definitely violated
+    /// - `None` if the result cannot be determined (e.g., unbound variables remain)
+    pub fn evaluate(&self, subst: &crate::unify::Substitution) -> Option<bool> {
+        match self {
+            Constraint::True => Some(true),
+            Constraint::False => Some(false),
+            Constraint::Atomic(atomic) => atomic.evaluate(subst),
+            Constraint::And(left, right) => {
+                let left_val = left.evaluate(subst);
+                let right_val = right.evaluate(subst);
+                match (left_val, right_val) {
+                    (Some(false), _) | (_, Some(false)) => Some(false),
+                    (Some(true), Some(true)) => Some(true),
+                    _ => None,
+                }
+            }
+            Constraint::Or(left, right) => {
+                let left_val = left.evaluate(subst);
+                let right_val = right.evaluate(subst);
+                match (left_val, right_val) {
+                    (Some(true), _) | (_, Some(true)) => Some(true),
+                    (Some(false), Some(false)) => Some(false),
+                    _ => None,
+                }
+            }
+            Constraint::Not(inner) => inner.evaluate(subst).map(|v| !v),
+        }
+    }
 }
 
 /// Convert a constraint to standard form recursively.

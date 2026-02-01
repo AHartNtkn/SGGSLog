@@ -114,17 +114,25 @@ impl QueryStream {
                     continue;
                 }
                 None => {
-                    // Derivation cannot proceed - check result
+                    // Derivation complete - check result
                     self.final_result = derivation.result().cloned();
+
+                    // For satisfiable theories, do one final extraction before clearing derivation
+                    if matches!(self.final_result, Some(DerivationResult::Satisfiable(_))) {
+                        self.extract_new_answers();
+                    }
+
                     self.derivation = None;
 
-                    // One final extraction from the complete trail
-                    // (already done above, but result tells us outcome)
+                    // Return pending answer if we found one
+                    if let Some(ans) = self.pending_answers.pop() {
+                        return QueryResult::Answer(ans);
+                    }
+
+                    // Otherwise return based on final result
                     return match &self.final_result {
                         Some(DerivationResult::Timeout) => QueryResult::Timeout,
-                        Some(DerivationResult::Unsatisfiable) => QueryResult::Exhausted,
-                        Some(DerivationResult::Satisfiable(_)) => QueryResult::Exhausted,
-                        None => QueryResult::Exhausted,
+                        _ => QueryResult::Exhausted,
                     };
                 }
             }
@@ -149,261 +157,274 @@ impl QueryStream {
         let init_interp = trail.initial_interpretation();
         let query_vars: HashSet<Var> = self.query.variables();
 
-        // For single-literal positive queries, match against I-false selected literals
-        // (those are the ones made true by the trail)
-        if self.query.literals.len() == 1 && self.query.literals[0].positive {
-            let query_lit = &self.query.literals[0];
+        // Build the set of true atoms and patterns from the trail.
+        // I-false selected positive literals are made true by the trail.
+        let mut true_atoms: HashSet<Atom> = HashSet::new();
+        let mut true_patterns: Vec<Literal> = Vec::new();
 
-            for clause in trail.clauses() {
-                let selected = clause.selected_literal();
-
-                // I-false selected literals contribute to the model
-                if !init_interp.is_false(selected) || !selected.positive {
-                    continue;
-                }
-
-                // Must have same predicate
-                if selected.atom.predicate != query_lit.atom.predicate {
-                    continue;
-                }
-
-                // Try to unify
-                if let UnifyResult::Success(sigma) = unify_literals(query_lit, selected) {
-                    let projected = project_substitution(
-                        &sigma,
-                        &query_vars,
-                        self.user_signature.as_ref(),
-                        self.policy,
-                    );
-
-                    // Check projection didn't lose required bindings
-                    let orig_bound: HashSet<_> = sigma
-                        .bindings()
-                        .filter(|(v, _)| query_vars.contains(*v))
-                        .map(|(v, _)| v.clone())
-                        .collect();
-                    let proj_bound: HashSet<_> =
-                        projected.bindings().map(|(v, _)| v.clone()).collect();
-
-                    if proj_bound.len() < orig_bound.len() {
-                        continue;
-                    }
-
-                    let canonical = canonical_form(&projected);
-                    if self.seen_answers.insert(canonical) {
-                        self.pending_answers.push(projected);
-                    }
+        for clause in trail.clauses() {
+            let selected = clause.selected_literal();
+            // I-false selected positive literals contribute to the model
+            if init_interp.is_false(selected) && selected.positive {
+                if selected.is_ground() {
+                    true_atoms.insert(selected.atom.clone());
+                } else {
+                    true_patterns.push(selected.clone());
                 }
             }
         }
-        // TODO: Handle negative queries and multi-literal queries incrementally
-    }
-}
 
-/// Extract answers by finding substitutions that make the query true in the model.
-fn extract_answers(
-    query: &Query,
-    true_atoms: &HashSet<Atom>,
-    true_patterns: &[Literal],
-    user_signature: Option<&UserSignature>,
-    policy: ProjectionPolicy,
-) -> Vec<Substitution> {
-    let query_vars: HashSet<Var> = query.variables();
+        // Handle single-literal queries
+        if self.query.literals.len() == 1 {
+            let query_lit = self.query.literals[0].clone();
 
-    // For a single-literal query, find all matching atoms and patterns
-    if query.literals.len() == 1 {
-        let query_lit = &query.literals[0];
-
-        // Handle negative queries
-        if !query_lit.positive {
-            return extract_negative_answers(
-                query_lit,
-                &query_vars,
-                true_atoms,
-                true_patterns,
-                user_signature,
-                policy,
-            );
+            if query_lit.positive {
+                // Positive query - match against true atoms/patterns
+                self.extract_positive_single_literal(&query_lit, &true_atoms, &true_patterns, &query_vars);
+            } else {
+                // Negative query - check for absence from model
+                self.extract_negative_single_literal(&query_lit, &true_atoms, &true_patterns, &query_vars);
+            }
+            return;
         }
 
-        let mut answers = Vec::new();
-        let mut seen_answers: HashSet<Vec<(Var, Term)>> = HashSet::new();
+        // Handle multi-literal (conjunctive) queries
+        self.extract_multi_literal(&true_atoms, &query_vars);
+    }
 
+    /// Extract answers for a single positive literal query.
+    fn extract_positive_single_literal(
+        &mut self,
+        query_lit: &Literal,
+        true_atoms: &HashSet<Atom>,
+        true_patterns: &[Literal],
+        query_vars: &HashSet<Var>,
+    ) {
         // Check ground atoms
         for atom in true_atoms {
+            if atom.predicate != query_lit.atom.predicate {
+                continue;
+            }
+
             let model_lit = Literal {
                 positive: true,
                 atom: atom.clone(),
             };
 
             if let UnifyResult::Success(sigma) = unify_literals(query_lit, &model_lit) {
-                let projected = project_substitution(&sigma, &query_vars, user_signature, policy);
-
-                // Only include answer if all query variables are bound to projectable terms
-                // If a query variable is bound but filtered out, skip this answer
-                let orig_bound_vars: HashSet<_> = sigma
-                    .bindings()
-                    .filter(|(v, _)| query_vars.contains(*v))
-                    .map(|(v, _)| v.clone())
-                    .collect();
-                let proj_bound_vars: HashSet<_> =
-                    projected.bindings().map(|(v, _)| v.clone()).collect();
-
-                // If we lost bindings due to projection, skip this answer
-                if proj_bound_vars.len() < orig_bound_vars.len() {
-                    continue;
-                }
-
-                let canonical = canonical_form(&projected);
-                if !seen_answers.contains(&canonical) {
-                    seen_answers.insert(canonical);
-                    answers.push(projected);
-                }
+                self.add_answer_if_new(&sigma, query_vars);
             }
         }
 
-        // Check non-ground patterns (these represent all instances)
+        // Check non-ground patterns
         for pattern in true_patterns {
-            if !pattern.positive {
+            if !pattern.positive || pattern.atom.predicate != query_lit.atom.predicate {
                 continue;
             }
 
             // Rename pattern variables to avoid clashes with query variables
-            let renamed = rename_away_from(pattern, &query_vars);
+            let renamed = rename_away_from(pattern, query_vars);
 
             if let UnifyResult::Success(sigma) = unify_literals(query_lit, &renamed) {
-                let projected = project_substitution(&sigma, &query_vars, user_signature, policy);
-
-                // Only include answer if all query variables are bound to projectable terms
-                let orig_bound_vars: HashSet<_> = sigma
-                    .bindings()
-                    .filter(|(v, _)| query_vars.contains(*v))
-                    .map(|(v, _)| v.clone())
-                    .collect();
-                let proj_bound_vars: HashSet<_> =
-                    projected.bindings().map(|(v, _)| v.clone()).collect();
-
-                if proj_bound_vars.len() < orig_bound_vars.len() {
-                    continue;
-                }
-
-                let canonical = canonical_form(&projected);
-                if !seen_answers.contains(&canonical) {
-                    seen_answers.insert(canonical);
-                    answers.push(projected);
-                }
+                self.add_answer_if_new(&sigma, query_vars);
             }
         }
-        return answers;
     }
 
-    // For multi-literal queries, find substitutions that satisfy all literals
-    let mut answers = Vec::new();
-    find_multi_literal_answers(
-        &query.literals,
-        true_atoms,
-        Substitution::empty(),
-        &query_vars,
-        user_signature,
-        policy,
-        &mut answers,
-        &mut HashSet::new(),
-    );
-    answers
-}
-
-/// Extract answers for a single negative literal query.
-///
-/// A negative literal ¬p(t) is true if p(t) is NOT in the model.
-/// For ground queries, we check if the atom is absent.
-/// For queries with variables, we enumerate over the user signature.
-fn extract_negative_answers(
-    query_lit: &Literal,
-    query_vars: &HashSet<Var>,
-    true_atoms: &HashSet<Atom>,
-    true_patterns: &[Literal],
-    user_signature: Option<&UserSignature>,
-    policy: ProjectionPolicy,
-) -> Vec<Substitution> {
-    let mut answers = Vec::new();
-    let mut seen_answers: HashSet<Vec<(Var, Term)>> = HashSet::new();
-
-    // If the query is ground, simply check if the atom is absent from the model
-    if query_lit.is_ground() {
-        // Check if atom is in true_atoms
-        if !true_atoms.contains(&query_lit.atom) {
-            // Also check if any pattern covers this atom
-            let covered_by_pattern = true_patterns.iter().any(|pattern| {
-                if !pattern.positive || pattern.atom.predicate != query_lit.atom.predicate {
-                    return false;
-                }
-                // Check if the query atom is an instance of the pattern
-                let query_as_pos = Literal {
-                    positive: true,
-                    atom: query_lit.atom.clone(),
-                };
-                matches!(
-                    unify_literals(&query_as_pos, pattern),
-                    UnifyResult::Success(_)
-                )
-            });
-
-            if !covered_by_pattern {
-                // Atom is absent from model - query is satisfied
-                answers.push(Substitution::empty());
-            }
-        }
-        return answers;
-    }
-
-    // Non-ground negative query - enumerate over user signature constants
-    if let Some(sig) = user_signature {
-        let constants: Vec<Term> = sig
-            .signature()
-            .functions
-            .iter()
-            .filter(|fn_sig| fn_sig.arity == 0)
-            .map(|fn_sig| Term::constant(&fn_sig.name))
-            .collect();
-
-        // Generate all possible ground instances using constants
-        let vars: Vec<Var> = query_vars.iter().cloned().collect();
-        let candidates = generate_ground_instances(&vars, &constants);
-
-        for subst in candidates {
-            let grounded_lit = query_lit.apply_subst(&subst);
-
-            // Check if this ground negative literal is true (atom NOT in model)
-            if !true_atoms.contains(&grounded_lit.atom) {
-                // Also check patterns
+    /// Extract answers for a single negative literal query.
+    fn extract_negative_single_literal(
+        &mut self,
+        query_lit: &Literal,
+        true_atoms: &HashSet<Atom>,
+        true_patterns: &[Literal],
+        query_vars: &HashSet<Var>,
+    ) {
+        // If the query is ground, check if the atom is absent from the model
+        if query_lit.is_ground() {
+            // Check if atom is in true_atoms
+            if !true_atoms.contains(&query_lit.atom) {
+                // Also check if any pattern covers this atom
                 let covered_by_pattern = true_patterns.iter().any(|pattern| {
-                    if !pattern.positive || pattern.atom.predicate != grounded_lit.atom.predicate {
+                    if !pattern.positive || pattern.atom.predicate != query_lit.atom.predicate {
                         return false;
                     }
-                    let grounded_as_pos = Literal {
+                    let query_as_pos = Literal {
                         positive: true,
-                        atom: grounded_lit.atom.clone(),
+                        atom: query_lit.atom.clone(),
                     };
                     matches!(
-                        unify_literals(&grounded_as_pos, pattern),
+                        unify_literals(&query_as_pos, pattern),
                         UnifyResult::Success(_)
                     )
                 });
 
                 if !covered_by_pattern {
-                    let projected =
-                        project_substitution(&subst, query_vars, user_signature, policy);
-                    let canonical = canonical_form(&projected);
-                    if !seen_answers.contains(&canonical) {
-                        seen_answers.insert(canonical);
-                        answers.push(projected);
+                    // Atom is absent from model - query is satisfied
+                    self.add_answer_if_new(&Substitution::empty(), query_vars);
+                }
+            }
+            return;
+        }
+
+        // Non-ground negative query - enumerate over user signature constants
+        if let Some(sig) = &self.user_signature {
+            let constants: Vec<Term> = sig
+                .signature()
+                .functions
+                .iter()
+                .filter(|fn_sig| fn_sig.arity == 0)
+                .map(|fn_sig| Term::constant(&fn_sig.name))
+                .collect();
+
+            // Generate all possible ground instances using constants
+            let vars: Vec<Var> = query_vars.iter().cloned().collect();
+            let candidates = generate_ground_instances(&vars, &constants);
+
+            for subst in candidates {
+                let grounded_lit = query_lit.apply_subst(&subst);
+
+                // Check if this ground negative literal is true (atom NOT in model)
+                if !true_atoms.contains(&grounded_lit.atom) {
+                    // Also check patterns
+                    let covered_by_pattern = true_patterns.iter().any(|pattern| {
+                        if !pattern.positive || pattern.atom.predicate != grounded_lit.atom.predicate {
+                            return false;
+                        }
+                        let grounded_as_pos = Literal {
+                            positive: true,
+                            atom: grounded_lit.atom.clone(),
+                        };
+                        matches!(
+                            unify_literals(&grounded_as_pos, pattern),
+                            UnifyResult::Success(_)
+                        )
+                    });
+
+                    if !covered_by_pattern {
+                        self.add_answer_if_new(&subst, query_vars);
                     }
                 }
             }
         }
     }
 
-    answers
+    /// Extract answers for multi-literal (conjunctive) queries.
+    fn extract_multi_literal(&mut self, true_atoms: &HashSet<Atom>, query_vars: &HashSet<Var>) {
+        let mut new_answers = Vec::new();
+        let mut seen_in_search: HashSet<Vec<(Var, Term)>> = HashSet::new();
+
+        self.find_multi_literal_answers_incremental(
+            &self.query.literals.clone(),
+            true_atoms,
+            Substitution::empty(),
+            query_vars,
+            &mut new_answers,
+            &mut seen_in_search,
+        );
+
+        for ans in new_answers {
+            let canonical = canonical_form(&ans);
+            if self.seen_answers.insert(canonical) {
+                self.pending_answers.push(ans);
+            }
+        }
+    }
+
+    /// Recursively find substitutions that satisfy all query literals.
+    fn find_multi_literal_answers_incremental(
+        &self,
+        remaining: &[Literal],
+        true_atoms: &HashSet<Atom>,
+        current_subst: Substitution,
+        query_vars: &HashSet<Var>,
+        answers: &mut Vec<Substitution>,
+        seen: &mut HashSet<Vec<(Var, Term)>>,
+    ) {
+        if remaining.is_empty() {
+            // All literals satisfied - this is an answer
+            let projected = project_substitution(
+                &current_subst,
+                query_vars,
+                self.user_signature.as_ref(),
+                self.policy,
+            );
+            let canonical = canonical_form(&projected);
+            if !seen.contains(&canonical) {
+                seen.insert(canonical);
+                answers.push(projected);
+            }
+            return;
+        }
+
+        let query_lit = &remaining[0];
+        let rest = &remaining[1..];
+
+        // Apply current substitution to query literal
+        let instantiated = query_lit.apply_subst(&current_subst);
+
+        if !instantiated.positive {
+            // Negative literal - check if the atom is NOT in the model
+            if !true_atoms.contains(&instantiated.atom) {
+                self.find_multi_literal_answers_incremental(
+                    rest,
+                    true_atoms,
+                    current_subst,
+                    query_vars,
+                    answers,
+                    seen,
+                );
+            }
+            return;
+        }
+
+        // Positive literal - find matching atoms
+        for atom in true_atoms {
+            let model_lit = Literal {
+                positive: true,
+                atom: atom.clone(),
+            };
+
+            if let UnifyResult::Success(sigma) = unify_literals(&instantiated, &model_lit) {
+                // Compose substitutions
+                let combined = current_subst.compose(&sigma);
+                self.find_multi_literal_answers_incremental(
+                    rest,
+                    true_atoms,
+                    combined,
+                    query_vars,
+                    answers,
+                    seen,
+                );
+            }
+        }
+    }
+
+    /// Add an answer if it's new (not seen before).
+    fn add_answer_if_new(&mut self, sigma: &Substitution, query_vars: &HashSet<Var>) {
+        let projected = project_substitution(
+            sigma,
+            query_vars,
+            self.user_signature.as_ref(),
+            self.policy,
+        );
+
+        // Check projection didn't lose required bindings
+        let orig_bound: HashSet<_> = sigma
+            .bindings()
+            .filter(|(v, _)| query_vars.contains(*v))
+            .map(|(v, _)| v.clone())
+            .collect();
+        let proj_bound: HashSet<_> = projected.bindings().map(|(v, _)| v.clone()).collect();
+
+        if proj_bound.len() < orig_bound.len() {
+            return;
+        }
+
+        let canonical = canonical_form(&projected);
+        if self.seen_answers.insert(canonical) {
+            self.pending_answers.push(projected);
+        }
+    }
 }
 
 /// Generate all ground instances by binding variables to constants.
@@ -428,82 +449,6 @@ fn generate_ground_instances(vars: &[Var], constants: &[Term]) -> Vec<Substituti
     }
 
     results
-}
-
-/// Recursively find substitutions that satisfy all query literals.
-fn find_multi_literal_answers(
-    remaining: &[Literal],
-    true_atoms: &HashSet<Atom>,
-    current_subst: Substitution,
-    query_vars: &HashSet<Var>,
-    user_signature: Option<&UserSignature>,
-    policy: ProjectionPolicy,
-    answers: &mut Vec<Substitution>,
-    seen: &mut HashSet<Vec<(Var, Term)>>,
-) {
-    if remaining.is_empty() {
-        // All literals satisfied - this is an answer
-        let projected = project_substitution(&current_subst, query_vars, user_signature, policy);
-        let canonical: Vec<(Var, Term)> = {
-            let mut pairs: Vec<_> = projected.bindings().collect();
-            pairs.sort_by(|a, b| a.0.name().cmp(b.0.name()));
-            pairs
-                .into_iter()
-                .map(|(v, t)| (v.clone(), t.clone()))
-                .collect()
-        };
-        if !seen.contains(&canonical) {
-            seen.insert(canonical);
-            answers.push(projected);
-        }
-        return;
-    }
-
-    let query_lit = &remaining[0];
-    let rest = &remaining[1..];
-
-    // Apply current substitution to query literal
-    let instantiated = query_lit.apply_subst(&current_subst);
-
-    if !instantiated.positive {
-        // Negative literal - check if the atom is NOT in the model
-        if !true_atoms.contains(&instantiated.atom) {
-            find_multi_literal_answers(
-                rest,
-                true_atoms,
-                current_subst,
-                query_vars,
-                user_signature,
-                policy,
-                answers,
-                seen,
-            );
-        }
-        return;
-    }
-
-    // Positive literal - find matching atoms
-    for atom in true_atoms {
-        let model_lit = Literal {
-            positive: true,
-            atom: atom.clone(),
-        };
-
-        if let UnifyResult::Success(sigma) = unify_literals(&instantiated, &model_lit) {
-            // Compose substitutions
-            let combined = current_subst.compose(&sigma);
-            find_multi_literal_answers(
-                rest,
-                true_atoms,
-                combined,
-                query_vars,
-                user_signature,
-                policy,
-                answers,
-                seen,
-            );
-        }
-    }
 }
 
 /// Project a substitution to only the specified variables, respecting projection policy.

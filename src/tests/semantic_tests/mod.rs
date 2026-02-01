@@ -18,7 +18,6 @@
 //! - [BW20] Bonacina, M.P., Winkler, S. "SGGS Decision Procedures." IJCAR 2020,
 //!   LNCS 12166, pp. 356-374. https://doi.org/10.1007/978-3-030-51074-9_20
 //!
-use std::collections::HashMap;
 
 use crate::constraint::Constraint;
 use crate::sggs::ConstrainedClause;

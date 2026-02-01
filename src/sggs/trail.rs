@@ -202,20 +202,84 @@ impl Trail {
     /// Check if this trail is complete for the theory.
     /// A trail is complete if I[Γ] satisfies all clauses in the theory.
     pub fn is_complete(&self, theory: &Theory) -> bool {
-        let interp = self.interpretation();
-
         for clause in theory.clauses() {
-            // Check if this clause is satisfied by I[Γ]
-            // A clause is satisfied if at least one literal is uniformly true
-            let satisfied = clause
-                .literals
-                .iter()
-                .any(|lit| interp.is_uniformly_true(lit));
-            if !satisfied {
+            if !self.is_clause_satisfied(clause) {
                 return false;
             }
         }
         true
+    }
+
+    /// Check if a clause is satisfied by I[Γ].
+    ///
+    /// A clause is satisfied if for every ground instance, at least one literal is true.
+    /// For ground clauses, this is equivalent to having some uniformly true literal.
+    /// For non-ground clauses with I-true literals, we check if any I-true literal
+    /// is "not uniformly blocked" (i.e., its complement is not subsumed by selected literals).
+    fn is_clause_satisfied(&self, clause: &crate::syntax::Clause) -> bool {
+        let interp = self.interpretation();
+
+        // For ground clauses, use the standard check
+        if clause.is_ground() {
+            return clause.literals.iter().any(|lit| interp.is_uniformly_true(lit));
+        }
+
+        // For non-ground clauses:
+        // 1. Check if any literal is uniformly true (handles all instances)
+        if clause.literals.iter().any(|lit| interp.is_uniformly_true(lit)) {
+            return true;
+        }
+
+        // 2. For I-true literals, check if any is "not uniformly blocked"
+        //    An I-true literal L is not uniformly blocked if its complement
+        //    is NOT an instance of (subsumed by) any selected I-false literal.
+        //    This means some instances of L remain true in I[Γ], satisfying those instances.
+        for lit in &clause.literals {
+            if self.initial_interp.is_true(lit) {
+                if !self.is_i_true_uniformly_blocked(lit) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if an I-true literal is uniformly blocked by selected literals.
+    ///
+    /// An I-true literal L is uniformly blocked if ALL its ground instances
+    /// have their complement selected on the trail. This happens when
+    /// the complement of L is an instance of some selected I-false literal
+    /// (i.e., the selected literal subsumes the complement).
+    fn is_i_true_uniformly_blocked(&self, lit: &Literal) -> bool {
+        let complement = lit.negated();
+
+        for clause in &self.clauses {
+            let selected = clause.selected_literal();
+
+            // Only I-false selected literals contribute to blocking
+            if !self.initial_interp.is_false(selected) {
+                continue;
+            }
+
+            // Check if complement has same polarity and predicate
+            if complement.positive != selected.positive
+                || complement.atom.predicate != selected.atom.predicate
+            {
+                continue;
+            }
+
+            // Check if complement is an instance of selected (selected subsumes complement)
+            // If so, ALL instances of complement are covered by selected,
+            // meaning ALL instances of lit are blocked
+            if super::extension::is_instance_of(&complement, selected) {
+                return true;
+            }
+        }
+
+        // complement is not subsumed by any selected literal
+        // So some instances of lit remain true (not blocked)
+        false
     }
 
     /// Find a conflict clause in the trail.
@@ -359,19 +423,31 @@ impl<'a> TrailInterpretation<'a> {
     pub fn is_uniformly_true(&self, lit: &Literal) -> bool {
         // First check if it's true in the initial interpretation
         if self.trail.initial_interp.is_true(lit) {
-            // But we need to check if the trail has made its complement true
-            // For each I-false selected literal on the trail, check if lit
-            // is complementary to any of them
+            // But we need to check if the trail has made any instance of its complement true
+            // For each I-false selected literal on the trail, check if lit's complement
+            // unifies with it (meaning some instance of lit is false)
             for clause in &self.trail.clauses {
                 let selected = clause.selected_literal();
                 // Selected literal is I-false; it contributes to the model
                 if self.trail.initial_interp.is_false(selected) {
-                    // Check if lit is the complement of a selected literal
-                    if lit.is_complementary(selected) {
-                        // The selected literal (negation of lit) is now true
-                        // So lit is false
-                        if clause.constraint.is_satisfiable() {
-                            return false;
+                    // Check if selected makes some instance of lit false
+                    // This happens when selected has opposite polarity and unifies with lit's atom
+                    if lit.positive != selected.positive
+                        && lit.atom.predicate == selected.atom.predicate
+                    {
+                        // Check if they unify (meaning selected covers some instance of lit's complement)
+                        let complement = lit.negated();
+                        if let crate::unify::UnifyResult::Success(sigma) =
+                            crate::unify::unify_literals(&complement, selected)
+                        {
+                            // Check if the constraint is satisfied under this substitution
+                            // If evaluate returns Some(false), the constraint is violated
+                            // If evaluate returns Some(true) or None, the substitution may be valid
+                            if clause.constraint.evaluate(&sigma) != Some(false) {
+                                // Selected literal makes some instance of complement true,
+                                // so some instance of lit is false - lit is NOT uniformly true
+                                return false;
+                            }
                         }
                     }
                 }
@@ -389,18 +465,24 @@ impl<'a> TrailInterpretation<'a> {
                 if lit.positive == selected.positive
                     && lit.atom.predicate == selected.atom.predicate
                 {
-                    // Check if lit unifies with selected under the constraint
-                    if clause.constraint.is_satisfiable() {
-                        // For uniform truth, the selected literal covers lit
-                        // We need to check if lit is a ground instance of selected
-                        if lit.is_ground() {
-                            if crate::unify::unify_literals(lit, selected).is_success() {
+                    if lit.is_ground() {
+                        // Ground lit: uniformly true if it unifies with selected AND constraint is satisfied
+                        if let crate::unify::UnifyResult::Success(sigma) =
+                            crate::unify::unify_literals(lit, selected)
+                        {
+                            // Check constraint is satisfied under this substitution
+                            // If evaluate returns Some(false), the constraint is violated
+                            if clause.constraint.evaluate(&sigma) != Some(false) {
                                 return true;
                             }
-                        } else {
-                            // Non-ground lit: uniformly true if all ground instances are covered
-                            // Conservative: return true if selected is more general
-                            if crate::unify::unify_literals(lit, selected).is_success() {
+                        }
+                    } else {
+                        // Non-ground lit: uniformly true only if lit is an INSTANCE of selected
+                        // (i.e., selected is more general and covers all ground instances of lit)
+                        // This requires one-way matching: σ(selected) = lit
+                        // Also need constraint to be satisfiable for ALL instances of lit
+                        if clause.constraint.is_satisfiable() {
+                            if super::extension::is_instance_of(lit, selected) {
                                 return true;
                             }
                         }
@@ -410,7 +492,9 @@ impl<'a> TrailInterpretation<'a> {
         }
         false
     }
+}
 
+impl<'a> TrailInterpretation<'a> {
     /// Is literal uniformly false in I[Γ]?
     ///
     /// A literal is uniformly false in I[Γ] if its negation is uniformly true.

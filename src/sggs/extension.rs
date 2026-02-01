@@ -70,70 +70,76 @@ pub fn sggs_extension(trail: &Trail, theory: &Theory) -> ExtensionResult {
             .map(|(idx, _)| idx)
             .collect();
 
-        // Try to find side premises for I-true literals
-        let side_premise_result =
-            match find_side_premises(trail, input_clause, &i_true_indices, dp_len) {
-                Some(result) => result,
-                None => continue,
-            };
-        let alpha = side_premise_result.substitution;
-        let constraint = side_premise_result.constraint;
-        let side_premise_predicates = side_premise_result.side_premise_predicates;
+        // Try ALL possible side premise combinations for I-true literals.
+        // This ensures we don't miss valid extensions when one combination is redundant.
+        let all_side_premise_results =
+            find_all_side_premises(trail, input_clause, &i_true_indices, dp_len);
 
-        // Apply substitution to clause
-        let extended_lits: Vec<Literal> = input_clause
-            .literals
-            .iter()
-            .map(|lit| lit.apply_subst(&alpha))
-            .collect();
-
-        // Check if extended clause would be redundant (already covered by trail)
-        if is_redundant_extension(&extended_lits, trail, &constraint) {
+        if all_side_premise_results.is_empty() {
             continue;
         }
 
         // For I-all-true clauses (no I-false literals), this will be a conflict
         let is_all_i_true = i_false_indices.is_empty();
 
-        // Find the selected literal
-        let selected_idx = if is_all_i_true {
-            // For I-all-true conflict clauses, select the first literal
-            0
-        } else {
-            // Find I-false literal with proper instances
-            match find_selected_literal(&extended_lits, trail, &constraint, init_interp) {
-                Some(idx) => idx,
-                None => continue,
+        // Try each side premise combination until we find a non-redundant one
+        for side_premise_result in all_side_premise_results {
+            let alpha = side_premise_result.substitution;
+            let constraint = side_premise_result.constraint;
+            let side_premise_predicates = side_premise_result.side_premise_predicates;
+
+            // Apply substitution to clause
+            let extended_lits: Vec<Literal> = input_clause
+                .literals
+                .iter()
+                .map(|lit| lit.apply_subst(&alpha))
+                .collect();
+
+            // Check if extended clause would be redundant (already covered by trail)
+            if is_redundant_extension(&extended_lits, trail, &constraint) {
+                continue; // Try next side premise combination
             }
-        };
 
-        let extended_clause = ConstrainedClause::with_constraint(
-            Clause::new(extended_lits.clone()),
-            constraint.clone(),
-            selected_idx,
-        );
-
-        // Check if this is a critical extension first.
-        // A critical extension happens when the selected literal is blocked
-        // by an I-all-true clause in dp(Γ) that should be replaced.
-        // The blocker must be on a DIFFERENT predicate than the side premises,
-        // otherwise it's a true conflict (not replaceable).
-        if let Some(blocker_idx) =
-            find_blocking_clause(trail, &extended_clause, dp_len, &side_premise_predicates)
-        {
-            return ExtensionResult::Critical {
-                replace_index: blocker_idx,
-                clause: extended_clause,
+            // Find the selected literal
+            let selected_idx = if is_all_i_true {
+                // For I-all-true conflict clauses, select the first literal
+                0
+            } else {
+                // Find I-false literal with proper instances
+                match find_selected_literal(&extended_lits, trail, &constraint, init_interp) {
+                    Some(idx) => idx,
+                    None => continue, // Try next side premise combination
+                }
             };
-        }
 
-        // Check if this is a conflict clause (all literals uniformly false in I[Γ])
-        // This happens for I-all-true extension clauses that conflict with the trail.
-        if is_conflict_extended(&extended_lits, trail) {
-            return ExtensionResult::Conflict(extended_clause);
-        }
+            let extended_clause = ConstrainedClause::with_constraint(
+                Clause::new(extended_lits.clone()),
+                constraint.clone(),
+                selected_idx,
+            );
 
-        return ExtensionResult::Extended(extended_clause);
+            // Check if this is a critical extension first.
+            // A critical extension happens when the selected literal is blocked
+            // by an I-all-true clause in dp(Γ) that should be replaced.
+            // The blocker must be on a DIFFERENT predicate than the side premises,
+            // otherwise it's a true conflict (not replaceable).
+            if let Some(blocker_idx) =
+                find_blocking_clause(trail, &extended_clause, dp_len, &side_premise_predicates)
+            {
+                return ExtensionResult::Critical {
+                    replace_index: blocker_idx,
+                    clause: extended_clause,
+                };
+            }
+
+            // Check if this is a conflict clause (all literals uniformly false in I[Γ])
+            // This happens for I-all-true extension clauses that conflict with the trail.
+            if is_conflict_extended(&extended_lits, trail) {
+                return ExtensionResult::Conflict(extended_clause);
+            }
+
+            return ExtensionResult::Extended(extended_clause);
+        }
     }
 
     ExtensionResult::NoExtension
@@ -157,69 +163,142 @@ struct SidePremiseResult {
 ///
 /// When there are no I-true literals (n=0), this returns an empty substitution unless
 /// the interpretation is Explicit, in which case we try to find a semantic falsifier.
-fn find_side_premises(
+/// Find ALL possible side premise combinations for a clause.
+/// Returns a vector of all valid combinations, trying older premises first.
+fn find_all_side_premises(
     trail: &Trail,
     clause: &Clause,
     i_true_indices: &[usize],
     dp_len: usize,
-) -> Option<SidePremiseResult> {
+) -> Vec<SidePremiseResult> {
     let init_interp = trail.initial_interpretation();
-    let mut combined_subst = Substitution::empty();
-    let mut combined_constraint = Constraint::True;
-    let mut used_premises: Vec<bool> = vec![false; dp_len];
-    let mut side_premise_predicates = std::collections::HashSet::new();
 
-    // For each I-true literal, find a matching side premise
-    // Search in REVERSE order (newest first) to ensure recursive theories
-    // use the most recent instances, generating new extensions rather than redundant ones.
+    // If no I-true literals, return a single result with empty substitution
+    if i_true_indices.is_empty() {
+        let mut combined_subst = Substitution::empty();
+        // Try to find a semantic falsifier for non-ground clauses
+        if !clause.is_ground() {
+            if let Some(falsifier) = find_explicit_semantic_falsifier(clause, init_interp) {
+                combined_subst = falsifier;
+            }
+        }
+        return vec![SidePremiseResult {
+            substitution: combined_subst,
+            constraint: Constraint::True,
+            side_premise_predicates: std::collections::HashSet::new(),
+        }];
+    }
+
+    // Collect all valid premise indices for each I-true literal
+    let mut premise_options: Vec<Vec<usize>> = Vec::new();
     for &lit_idx in i_true_indices {
-        let i_true_lit = clause.literals[lit_idx].apply_subst(&combined_subst);
+        let i_true_lit = &clause.literals[lit_idx];
         let complement = i_true_lit.negated();
 
-        let mut found = false;
-        for premise_idx in (0..dp_len).rev() {
-            if used_premises[premise_idx] {
-                continue;
-            }
-
+        let mut valid_premises = Vec::new();
+        // Search FORWARD (oldest first) to prefer earlier extensions
+        for premise_idx in 0..dp_len {
             let premise = &trail.clauses()[premise_idx];
             let selected = premise.selected_literal();
 
-            // Side premise must have I-false selected literal
             if !init_interp.is_false(selected) {
                 continue;
             }
 
-            // The complement of the I-true literal should unify with the I-false selected literal
-            // i.e., if I-true lit is ¬P(x), complement is P(x), which should match P(a) on trail
             if complement.positive != selected.positive
                 || complement.atom.predicate != selected.atom.predicate
             {
                 continue;
             }
 
-            if let UnifyResult::Success(sigma) = unify_literals(&complement, selected) {
-                // Track the predicate used by this side premise
-                side_premise_predicates.insert(selected.atom.predicate.clone());
-                // Compose substitutions
-                combined_subst = combined_subst.compose(&sigma);
-                combined_constraint = combined_constraint.and(premise.constraint.clone());
-                used_premises[premise_idx] = true;
-                found = true;
-                break;
+            if unify_literals(&complement, selected).is_success() {
+                valid_premises.push(premise_idx);
             }
         }
 
-        if !found {
-            return None;
+        if valid_premises.is_empty() {
+            return vec![]; // No valid premises for this I-true literal
         }
+        premise_options.push(valid_premises);
     }
 
-    // If no I-true literals (n=0) and the clause has non-ground I-false literals,
-    // try to find a semantic falsifier from the explicit interpretation
-    if i_true_indices.is_empty() && !clause.is_ground() {
-        if let Some(falsifier) = find_explicit_semantic_falsifier(clause, init_interp) {
-            combined_subst = falsifier;
+    // Generate all combinations (Cartesian product)
+    let mut results = Vec::new();
+    generate_premise_combinations(
+        trail,
+        clause,
+        i_true_indices,
+        &premise_options,
+        0,
+        &mut vec![],
+        &mut results,
+    );
+    results
+}
+
+/// Recursively generate all premise combinations.
+fn generate_premise_combinations(
+    trail: &Trail,
+    clause: &Clause,
+    i_true_indices: &[usize],
+    premise_options: &[Vec<usize>],
+    depth: usize,
+    current_combo: &mut Vec<usize>,
+    results: &mut Vec<SidePremiseResult>,
+) {
+    if depth == premise_options.len() {
+        // Build the result from this combination
+        if let Some(result) = build_side_premise_result(trail, clause, i_true_indices, current_combo)
+        {
+            results.push(result);
+        }
+        return;
+    }
+
+    for &premise_idx in &premise_options[depth] {
+        // Check that this premise isn't already used
+        if current_combo.contains(&premise_idx) {
+            continue;
+        }
+        current_combo.push(premise_idx);
+        generate_premise_combinations(
+            trail,
+            clause,
+            i_true_indices,
+            premise_options,
+            depth + 1,
+            current_combo,
+            results,
+        );
+        current_combo.pop();
+    }
+}
+
+/// Build a SidePremiseResult from a specific combination of premises.
+fn build_side_premise_result(
+    trail: &Trail,
+    clause: &Clause,
+    i_true_indices: &[usize],
+    premise_indices: &[usize],
+) -> Option<SidePremiseResult> {
+    let mut combined_subst = Substitution::empty();
+    let mut combined_constraint = Constraint::True;
+    let mut side_premise_predicates = std::collections::HashSet::new();
+
+    for (i, &lit_idx) in i_true_indices.iter().enumerate() {
+        let i_true_lit = clause.literals[lit_idx].apply_subst(&combined_subst);
+        let complement = i_true_lit.negated();
+
+        let premise_idx = premise_indices[i];
+        let premise = &trail.clauses()[premise_idx];
+        let selected = premise.selected_literal();
+
+        if let UnifyResult::Success(sigma) = unify_literals(&complement, selected) {
+            side_premise_predicates.insert(selected.atom.predicate.clone());
+            combined_subst = combined_subst.compose(&sigma);
+            combined_constraint = combined_constraint.and(premise.constraint.clone());
+        } else {
+            return None; // Unification failed with applied substitution
         }
     }
 
@@ -340,7 +419,7 @@ fn is_literal_covered(lit: &Literal, trail: &Trail) -> bool {
 ///
 /// Returns true if there exists a substitution σ such that σ(general) = specific.
 /// This means `general` is at least as general as `specific`.
-fn is_instance_of(specific: &Literal, general: &Literal) -> bool {
+pub(crate) fn is_instance_of(specific: &Literal, general: &Literal) -> bool {
     if specific.positive != general.positive || specific.atom.predicate != general.atom.predicate {
         return false;
     }
