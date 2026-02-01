@@ -23,7 +23,7 @@ pub use derivation::{
     applicable_inferences, derive, derive_with_trace, next_inference, DerivationConfig,
     DerivationResult, DerivationState, DerivationStep, InferenceRule, Model,
 };
-pub use extension::{sggs_extension, ExtensionResult};
+pub use extension::{sggs_extension, sggs_extension_fair, ExtensionResult, FairExtensionResult};
 pub use factoring::{is_factoring_applicable, sggs_factoring};
 pub use interpretation::{InitialInterpretation, TruthValue};
 pub use left_split::sggs_left_split;

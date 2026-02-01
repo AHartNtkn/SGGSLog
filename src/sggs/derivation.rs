@@ -1,8 +1,8 @@
 //! SGGS derivation loop.
 
 use super::{
-    is_disposable, is_factoring_applicable, sggs_deletion, sggs_extension, sggs_factoring,
-    sggs_left_split, sggs_move, sggs_resolution, sggs_splitting, ConstrainedClause,
+    is_disposable, is_factoring_applicable, sggs_deletion, sggs_extension, sggs_extension_fair,
+    sggs_factoring, sggs_left_split, sggs_move, sggs_resolution, sggs_splitting, ConstrainedClause,
     ExtensionResult, InitialInterpretation, ResolutionResult, Trail,
 };
 use crate::syntax::{Atom, Literal};
@@ -46,6 +46,9 @@ pub struct DerivationState {
     config: DerivationConfig,
     done: Option<DerivationResult>,
     start_time: Option<Instant>,
+    /// Index of next theory clause to try for extension (for fair scheduling).
+    /// This rotates through theory clauses to prevent starvation.
+    next_extension_clause_idx: usize,
 }
 
 /// Configuration for SGGS derivation.
@@ -456,6 +459,7 @@ impl DerivationState {
             config,
             done: None,
             start_time,
+            next_extension_clause_idx: 0,
         }
     }
 
@@ -469,6 +473,7 @@ impl DerivationState {
             config,
             done: None,
             start_time,
+            next_extension_clause_idx: 0,
         }
     }
 
@@ -680,7 +685,17 @@ impl DerivationState {
             }
 
             InferenceRule::Extension => {
-                match sggs_extension(&self.trail, &self.theory) {
+                // Use fair extension to prevent starvation of later theory clauses
+                let fair_result =
+                    sggs_extension_fair(&self.trail, &self.theory, self.next_extension_clause_idx);
+
+                // Advance to next clause for next extension (round-robin)
+                if let Some(clause_idx) = fair_result.clause_index {
+                    let num_clauses = self.theory.clauses().len();
+                    self.next_extension_clause_idx = (clause_idx + 1) % num_clauses.max(1);
+                }
+
+                match fair_result.result {
                     ExtensionResult::Extended(clause) => {
                         self.trail.push(clause);
                         Some(DerivationStep {

@@ -22,6 +22,169 @@ pub enum ExtensionResult {
     Conflict(ConstrainedClause),
 }
 
+/// Result of fair extension, includes which theory clause was used.
+#[derive(Debug)]
+pub struct FairExtensionResult {
+    /// The extension result
+    pub result: ExtensionResult,
+    /// Index of the theory clause that was extended (if any)
+    pub clause_index: Option<usize>,
+}
+
+/// Attempt SGGS-Extension with fair scheduling.
+///
+/// Starts scanning from `start_idx` and wraps around, ensuring all theory
+/// clauses get a fair chance to be extended regardless of order.
+pub fn sggs_extension_fair(
+    trail: &Trail,
+    theory: &Theory,
+    start_idx: usize,
+) -> FairExtensionResult {
+    let init_interp = trail.initial_interpretation();
+    let dp_len = trail.disjoint_prefix_length();
+
+    // Precondition: Γ = dp(Γ) (trail must be disjoint)
+    if dp_len != trail.len() {
+        return FairExtensionResult {
+            result: ExtensionResult::NoExtension,
+            clause_index: None,
+        };
+    }
+
+    // Precondition: No conflict clause exists
+    if trail.find_conflict().is_some() {
+        return FairExtensionResult {
+            result: ExtensionResult::NoExtension,
+            clause_index: None,
+        };
+    }
+
+    let clauses = theory.clauses();
+    let num_clauses = clauses.len();
+    if num_clauses == 0 {
+        return FairExtensionResult {
+            result: ExtensionResult::NoExtension,
+            clause_index: None,
+        };
+    }
+
+    // Try each clause starting from start_idx, wrapping around
+    for offset in 0..num_clauses {
+        let clause_idx = (start_idx + offset) % num_clauses;
+        let input_clause = &clauses[clause_idx];
+
+        if let Some(result) = try_extend_clause(trail, input_clause, init_interp, dp_len) {
+            return FairExtensionResult {
+                result,
+                clause_index: Some(clause_idx),
+            };
+        }
+    }
+
+    FairExtensionResult {
+        result: ExtensionResult::NoExtension,
+        clause_index: None,
+    }
+}
+
+/// Try to extend the trail with a specific theory clause.
+/// Returns Some(result) if extension is possible, None otherwise.
+fn try_extend_clause(
+    trail: &Trail,
+    input_clause: &Clause,
+    init_interp: &crate::sggs::InitialInterpretation,
+    dp_len: usize,
+) -> Option<ExtensionResult> {
+    // Handle empty clause specially - it's an immediate contradiction
+    if input_clause.is_empty() {
+        return Some(ExtensionResult::Conflict(
+            ConstrainedClause::with_constraint(Clause::empty(), Constraint::True, 0),
+        ));
+    }
+
+    // Identify I-true literals (n ≥ 0) and I-false literals
+    let i_true_indices: Vec<usize> = input_clause
+        .literals
+        .iter()
+        .enumerate()
+        .filter(|(_, lit)| init_interp.is_true(lit))
+        .map(|(idx, _)| idx)
+        .collect();
+
+    let i_false_indices: Vec<usize> = input_clause
+        .literals
+        .iter()
+        .enumerate()
+        .filter(|(_, lit)| init_interp.is_false(lit))
+        .map(|(idx, _)| idx)
+        .collect();
+
+    // Try ALL possible side premise combinations for I-true literals.
+    let all_side_premise_results =
+        find_all_side_premises(trail, input_clause, &i_true_indices, dp_len);
+
+    if all_side_premise_results.is_empty() {
+        return None;
+    }
+
+    // For I-all-true clauses (no I-false literals), this will be a conflict
+    let is_all_i_true = i_false_indices.is_empty();
+
+    // Try each side premise combination until we find a non-redundant one
+    for side_premise_result in all_side_premise_results {
+        let alpha = side_premise_result.substitution;
+        let constraint = side_premise_result.constraint;
+        let side_premise_predicates = side_premise_result.side_premise_predicates;
+
+        // Apply substitution to clause
+        let extended_lits: Vec<Literal> = input_clause
+            .literals
+            .iter()
+            .map(|lit| lit.apply_subst(&alpha))
+            .collect();
+
+        // Check if extended clause would be redundant (already covered by trail)
+        if is_redundant_extension(&extended_lits, trail, &constraint) {
+            continue;
+        }
+
+        // Find the selected literal
+        let selected_idx = if is_all_i_true {
+            0
+        } else {
+            match find_selected_literal(&extended_lits, trail, &constraint, init_interp) {
+                Some(idx) => idx,
+                None => continue,
+            }
+        };
+
+        let extended_clause = ConstrainedClause::with_constraint(
+            Clause::new(extended_lits.clone()),
+            constraint.clone(),
+            selected_idx,
+        );
+
+        // Check if this is a critical extension first.
+        if let Some(blocker_idx) =
+            find_blocking_clause(trail, &extended_clause, dp_len, &side_premise_predicates)
+        {
+            return Some(ExtensionResult::Critical {
+                replace_index: blocker_idx,
+                clause: extended_clause,
+            });
+        }
+
+        // Check if this is a conflict clause
+        if is_conflict_extended(&extended_lits, trail) {
+            return Some(ExtensionResult::Conflict(extended_clause));
+        }
+
+        return Some(ExtensionResult::Extended(extended_clause));
+    }
+
+    None
+}
+
 /// Attempt SGGS-Extension.
 ///
 /// Finds a clause C in the theory where I-true literals of C unify with
