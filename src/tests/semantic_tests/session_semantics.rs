@@ -107,6 +107,70 @@ fn session_next_without_active_query_errors() {
 }
 
 #[test]
+fn session_positive_query_streams_multiple_answers_without_exhaustion() {
+    // Source: spec.md (query answers are streamed; callers fetch answers via :next).
+    // Quote: "Query answers are streamed: a query returns the first answer ... and subsequent answers are retrieved explicitly via `:next`."
+    let mut session = Session::new();
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![Literal::pos(
+            "p",
+            vec![Term::constant("a")],
+        )])))
+        .expect("execute_statement failed");
+    session
+        .execute_statement(Statement::Clause(Clause::new(vec![
+            Literal::neg("p", vec![Term::var("X")]),
+            Literal::pos("p", vec![Term::app("f", vec![Term::var("X")])]),
+        ])))
+        .expect("execute_statement failed");
+
+    let stmt = Statement::Query(Query::new(vec![Literal::pos(
+        "p",
+        vec![Term::var("X")],
+    )]));
+    let mut qr = match session
+        .execute_statement(stmt)
+        .expect("execute_statement failed")
+    {
+        ExecResult::QueryResult(qr) => qr,
+        other => panic!("expected query result, got {:?}", other),
+    };
+
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..3 {
+        match qr {
+            crate::sggs::QueryResult::Answer(ans) => {
+                let x = Var::new("X");
+                let t = ans.lookup(&x).expect("expected X binding");
+                assert!(
+                    term_uses_only_symbols(t, session.user_signature().signature()),
+                    "answer contains non-user symbol: {:?}",
+                    t
+                );
+                assert!(
+                    seen.insert(format!("{:?}", t)),
+                    "answers must be duplicate-free"
+                );
+            }
+            other => panic!("expected answer, got {:?}", other),
+        }
+        let next = session
+            .execute_statement(Statement::Directive(Directive::Next))
+            .expect("execute_statement failed");
+        qr = match next {
+            ExecResult::QueryResult(qr) => qr,
+            other => panic!("expected query result, got {:?}", other),
+        };
+    }
+
+    match qr {
+        crate::sggs::QueryResult::Answer(_) => {}
+        crate::sggs::QueryResult::Exhausted => panic!("expected more answers, got exhausted"),
+        crate::sggs::QueryResult::Timeout => panic!("expected answer, got timeout"),
+    }
+}
+
+#[test]
 fn session_new_query_resets_stream() {
     let mut session = Session::new();
     let fact = Clause::new(vec![Literal::pos("p", vec![Term::constant("a")])]);
