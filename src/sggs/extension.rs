@@ -1,7 +1,10 @@
 //! SGGS-Extension inference rule.
 
 use super::{ConstrainedClause, Trail};
+use crate::constraint::Constraint;
+use crate::syntax::{Clause, Literal, Term};
 use crate::theory::Theory;
+use crate::unify::{unify_literals, Substitution, UnifyResult};
 
 /// Result of attempting SGGS-Extension.
 #[derive(Debug)]
@@ -23,8 +26,567 @@ pub enum ExtensionResult {
 ///
 /// Finds a clause C in the theory where I-true literals of C unify with
 /// I-false selected literals on the trail, and generates an instance to add.
-pub fn sggs_extension(_trail: &Trail, _theory: &Theory) -> ExtensionResult {
-    todo!("sggs_extension implementation")
+pub fn sggs_extension(trail: &Trail, theory: &Theory) -> ExtensionResult {
+    let init_interp = trail.initial_interpretation();
+    let dp_len = trail.disjoint_prefix_length();
+
+    // Precondition: Γ = dp(Γ) (trail must be disjoint)
+    if dp_len != trail.len() {
+        return ExtensionResult::NoExtension;
+    }
+
+    // Precondition: No conflict clause exists
+    if trail.find_conflict().is_some() {
+        return ExtensionResult::NoExtension;
+    }
+
+    // Try each clause in the theory
+    for input_clause in theory.clauses() {
+        // Handle empty clause specially - it's an immediate contradiction
+        if input_clause.is_empty() {
+            // An empty clause means the theory is unsatisfiable
+            // We return it as a conflict with no selected literal (index 0 is a dummy)
+            return ExtensionResult::Conflict(ConstrainedClause::with_constraint(
+                Clause::empty(),
+                Constraint::True,
+                0, // Dummy index - empty clause has no literals
+            ));
+        }
+
+        // Identify I-true literals (n ≥ 0) and I-false literals
+        let i_true_indices: Vec<usize> = input_clause
+            .literals
+            .iter()
+            .enumerate()
+            .filter(|(_, lit)| init_interp.is_true(lit))
+            .map(|(idx, _)| idx)
+            .collect();
+
+        let i_false_indices: Vec<usize> = input_clause
+            .literals
+            .iter()
+            .enumerate()
+            .filter(|(_, lit)| init_interp.is_false(lit))
+            .map(|(idx, _)| idx)
+            .collect();
+
+        // Try to find side premises for I-true literals
+        let side_premise_result = match find_side_premises(trail, input_clause, &i_true_indices, dp_len) {
+            Some(result) => result,
+            None => continue,
+        };
+        let alpha = side_premise_result.substitution;
+        let constraint = side_premise_result.constraint;
+        let side_premise_predicates = side_premise_result.side_premise_predicates;
+
+        // Apply substitution to clause
+        let extended_lits: Vec<Literal> = input_clause
+            .literals
+            .iter()
+            .map(|lit| lit.apply_subst(&alpha))
+            .collect();
+
+        // Check if extended clause would be redundant (already covered by trail)
+        if is_redundant_extension(&extended_lits, trail, &constraint) {
+            continue;
+        }
+
+        // For I-all-true clauses (no I-false literals), this will be a conflict
+        let is_all_i_true = i_false_indices.is_empty();
+
+        // Find the selected literal
+        let selected_idx = if is_all_i_true {
+            // For I-all-true conflict clauses, select the first literal
+            0
+        } else {
+            // Find I-false literal with proper instances
+            match find_selected_literal(&extended_lits, trail, &constraint, init_interp) {
+                Some(idx) => idx,
+                None => continue,
+            }
+        };
+
+        let extended_clause = ConstrainedClause::with_constraint(
+            Clause::new(extended_lits.clone()),
+            constraint.clone(),
+            selected_idx,
+        );
+
+        // Check if this is a critical extension first.
+        // A critical extension happens when the selected literal is blocked
+        // by an I-all-true clause in dp(Γ) that should be replaced.
+        // The blocker must be on a DIFFERENT predicate than the side premises,
+        // otherwise it's a true conflict (not replaceable).
+        if let Some(blocker_idx) = find_blocking_clause(trail, &extended_clause, dp_len, &side_premise_predicates) {
+            return ExtensionResult::Critical {
+                replace_index: blocker_idx,
+                clause: extended_clause,
+            };
+        }
+
+        // Check if this is a conflict clause (all literals uniformly false in I[Γ])
+        // This happens for I-all-true extension clauses that conflict with the trail.
+        if is_conflict_extended(&extended_lits, trail) {
+            return ExtensionResult::Conflict(extended_clause);
+        }
+
+        return ExtensionResult::Extended(extended_clause);
+    }
+
+    ExtensionResult::NoExtension
+}
+
+/// Result of finding side premises - includes predicates used for critical extension check.
+#[derive(Debug)]
+struct SidePremiseResult {
+    substitution: Substitution,
+    constraint: Constraint,
+    /// Predicates used by side premises (for critical extension detection)
+    side_premise_predicates: std::collections::HashSet<String>,
+}
+
+/// Find side premises in dp(Γ) for I-true literals.
+/// Returns (substitution, combined constraint, predicates) if all I-true literals can be matched.
+///
+/// For each I-true literal L in the clause, we find a side premise whose
+/// I-false selected literal M unifies with the complement of L.
+/// This captures the relationship: L is I-true, its complement ~L unifies with M (I-false selected).
+///
+/// When there are no I-true literals (n=0), this returns an empty substitution unless
+/// the interpretation is Explicit, in which case we try to find a semantic falsifier.
+fn find_side_premises(
+    trail: &Trail,
+    clause: &Clause,
+    i_true_indices: &[usize],
+    dp_len: usize,
+) -> Option<SidePremiseResult> {
+    let init_interp = trail.initial_interpretation();
+    let mut combined_subst = Substitution::empty();
+    let mut combined_constraint = Constraint::True;
+    let mut used_premises: Vec<bool> = vec![false; dp_len];
+    let mut side_premise_predicates = std::collections::HashSet::new();
+
+    // For each I-true literal, find a matching side premise
+    for &lit_idx in i_true_indices {
+        let i_true_lit = clause.literals[lit_idx].apply_subst(&combined_subst);
+        let complement = i_true_lit.negated();
+
+        let mut found = false;
+        for premise_idx in 0..dp_len {
+            if used_premises[premise_idx] {
+                continue;
+            }
+
+            let premise = &trail.clauses()[premise_idx];
+            let selected = premise.selected_literal();
+
+            // Side premise must have I-false selected literal
+            if !init_interp.is_false(selected) {
+                continue;
+            }
+
+            // The complement of the I-true literal should unify with the I-false selected literal
+            // i.e., if I-true lit is ¬P(x), complement is P(x), which should match P(a) on trail
+            if complement.positive != selected.positive
+                || complement.atom.predicate != selected.atom.predicate
+            {
+                continue;
+            }
+
+            if let UnifyResult::Success(sigma) = unify_literals(&complement, selected) {
+                // Track the predicate used by this side premise
+                side_premise_predicates.insert(selected.atom.predicate.clone());
+                // Compose substitutions
+                combined_subst = combined_subst.compose(&sigma);
+                combined_constraint = combined_constraint.and(premise.constraint.clone());
+                used_premises[premise_idx] = true;
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            return None;
+        }
+    }
+
+    // If no I-true literals (n=0) and the clause has non-ground I-false literals,
+    // try to find a semantic falsifier from the explicit interpretation
+    if i_true_indices.is_empty() && !clause.is_ground() {
+        if let Some(falsifier) = find_explicit_semantic_falsifier(clause, init_interp) {
+            combined_subst = falsifier;
+        }
+    }
+
+    Some(SidePremiseResult {
+        substitution: combined_subst,
+        constraint: combined_constraint.simplify(),
+        side_premise_predicates,
+    })
+}
+
+/// Find a semantic falsifier for a non-ground clause using explicit false atoms.
+///
+/// This tries to match non-ground literals in the clause with known false atoms
+/// to find a grounding substitution.
+fn find_explicit_semantic_falsifier(
+    clause: &Clause,
+    interp: &super::InitialInterpretation,
+) -> Option<Substitution> {
+    use super::InitialInterpretation;
+
+    match interp {
+        InitialInterpretation::Explicit { false_atoms, .. } => {
+            // For each non-ground literal in the clause, try to unify with a known false atom.
+            // We want to find a substitution that grounds the literal to an I-false instance.
+            for lit in &clause.literals {
+                // Skip ground literals (they don't need a falsifier)
+                if lit.is_ground() {
+                    continue;
+                }
+
+                // For positive literals, we try to unify with a known false atom
+                // (a positive literal is I-false when its atom is in false_atoms)
+                if lit.positive {
+                    for false_atom in false_atoms {
+                        if false_atom.predicate != lit.atom.predicate {
+                            continue;
+                        }
+
+                        // Try to unify the literal's atom with the false atom
+                        let target_lit = Literal {
+                            positive: true,
+                            atom: false_atom.clone(),
+                        };
+                        if let UnifyResult::Success(sigma) = unify_literals(lit, &target_lit) {
+                            return Some(sigma);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Check if extension would be redundant (clause already satisfied by trail).
+///
+/// A clause is redundant if ANY of its I-false literals is already covered by
+/// the partial interpretation I^p(Γ), because that makes the clause true in I[Γ].
+///
+/// For ground literals, we check `contains_ground`.
+/// For non-ground literals, we check if there's a selected literal on the trail
+/// that subsumes (is at least as general as) the candidate literal.
+fn is_redundant_extension(
+    extended_lits: &[Literal],
+    trail: &Trail,
+    _constraint: &Constraint,
+) -> bool {
+    let init_interp = trail.initial_interpretation();
+
+    for lit in extended_lits {
+        if init_interp.is_false(lit) {
+            // Check if this I-false literal is already covered
+            if is_literal_covered(lit, trail) {
+                return true;
+            }
+        }
+    }
+
+    // No I-false literal is covered, so clause is not satisfied
+    false
+}
+
+/// Check if a literal is already covered by the trail's partial interpretation.
+///
+/// A literal is covered if:
+/// 1. For ground literals: it's in the partial interpretation
+/// 2. For non-ground literals: there exists a selected literal on the trail
+///    that is at least as general (subsumes all ground instances)
+fn is_literal_covered(lit: &Literal, trail: &Trail) -> bool {
+    // For ground literals, use the existing contains_ground check
+    if lit.is_ground() {
+        return trail.partial_interpretation().contains_ground(lit);
+    }
+
+    // For non-ground literals, check if any selected literal on the trail
+    // subsumes this literal (i.e., is at least as general)
+    for clause in trail.clauses() {
+        let selected = clause.selected_literal();
+
+        // Must have same predicate and polarity
+        if lit.positive != selected.positive || lit.atom.predicate != selected.atom.predicate {
+            continue;
+        }
+
+        // Check if selected subsumes lit (selected is at least as general)
+        // This means: lit is an instance of selected
+        // i.e., there exists σ such that σ(selected) = lit
+        if is_instance_of(lit, selected) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Check if `specific` is an instance of `general`.
+///
+/// Returns true if there exists a substitution σ such that σ(general) = specific.
+/// This means `general` is at least as general as `specific`.
+fn is_instance_of(specific: &Literal, general: &Literal) -> bool {
+    if specific.positive != general.positive || specific.atom.predicate != general.atom.predicate {
+        return false;
+    }
+
+    if specific.atom.args.len() != general.atom.args.len() {
+        return false;
+    }
+
+    // Use one-way matching: try to find σ such that σ(general) = specific
+    // without binding any variables from specific.
+    match_terms_one_way(&general.atom.args, &specific.atom.args)
+}
+
+/// One-way matching: find σ such that σ(pattern) = target, where σ only binds
+/// variables from pattern, not from target.
+fn match_terms_one_way(pattern: &[Term], target: &[Term]) -> bool {
+    use std::collections::HashMap;
+
+    if pattern.len() != target.len() {
+        return false;
+    }
+
+    // Build a substitution that maps pattern variables to target terms
+    let mut subst: HashMap<String, &Term> = HashMap::new();
+
+    for (p, t) in pattern.iter().zip(target.iter()) {
+        if !match_term_one_way(p, t, &mut subst) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Match a single term (pattern against target).
+fn match_term_one_way<'a>(
+    pattern: &Term,
+    target: &'a Term,
+    subst: &mut std::collections::HashMap<String, &'a Term>,
+) -> bool {
+    match pattern {
+        Term::Var(v) => {
+            // Pattern variable: check if already bound
+            let key = v.name().to_string();
+            if let Some(existing) = subst.get(&key) {
+                // Must match the same target term
+                *existing == target
+            } else {
+                // Bind the pattern variable to the target term
+                subst.insert(key, target);
+                true
+            }
+        }
+        Term::App(fn_sym, args) => {
+            // Pattern is a function application
+            match target {
+                Term::Var(_) => {
+                    // Target is a variable - pattern is more specific, so not a match
+                    // (we can't instantiate a function to a variable)
+                    false
+                }
+                Term::App(target_fn, target_args) => {
+                    // Both are function applications - must have same symbol and arity
+                    if fn_sym.name != target_fn.name || args.len() != target_args.len() {
+                        return false;
+                    }
+                    // Recursively match arguments
+                    for (p, t) in args.iter().zip(target_args.iter()) {
+                        if !match_term_one_way(p, t, subst) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+            }
+        }
+    }
+}
+
+/// Find the selected literal index (first I-false literal with proper instances).
+///
+/// Priority order:
+/// 1. I-false literals that are NOT already in the partial interpretation (fresh)
+///    AND have proper instances (complement not in partial)
+/// 2. I-false literals with proper instances (even if already in partial)
+/// 3. First I-false literal (fallback)
+///
+/// This ordering prevents selecting the same literal that's already on the trail,
+/// which would create a duplicate and cause an Extension→Deletion infinite loop.
+fn find_selected_literal(
+    extended_lits: &[Literal],
+    trail: &Trail,
+    constraint: &Constraint,
+    init_interp: &super::InitialInterpretation,
+) -> Option<usize> {
+    let partial = trail.partial_interpretation();
+
+    // Find I-false literals
+    let i_false_indices: Vec<usize> = extended_lits
+        .iter()
+        .enumerate()
+        .filter(|(_, lit)| init_interp.is_false(lit))
+        .map(|(idx, _)| idx)
+        .collect();
+
+    // Priority 1: Find an I-false literal that is FRESH (not already in partial)
+    // and has proper instances. This contributes new information to the model.
+    for &idx in &i_false_indices {
+        let lit = &extended_lits[idx];
+        // Check if this literal is NOT already selected on the trail
+        if !partial.contains_ground(lit) {
+            // Also verify it has proper instances (complement not blocking it)
+            if has_proper_instances(lit, trail, constraint) {
+                return Some(idx);
+            }
+        }
+    }
+
+    // Priority 2: Find any I-false literal with proper instances
+    // (This handles cases where all literals are in partial but have proper instances)
+    for &idx in &i_false_indices {
+        let lit = &extended_lits[idx];
+        if has_proper_instances(lit, trail, constraint) {
+            return Some(idx);
+        }
+    }
+
+    // Priority 3: Fallback to first I-false (shouldn't normally reach here)
+    i_false_indices.first().copied()
+}
+
+/// Check if a literal has proper constrained ground instances.
+///
+/// A literal has proper instances if its complement is not uniformly true
+/// in the trail interpretation. For ground literals, we check contains_ground.
+/// For non-ground literals, we check if the complement unifies with any
+/// selected literal on the trail (which would block all instances).
+fn has_proper_instances(
+    lit: &Literal,
+    trail: &Trail,
+    _constraint: &Constraint,
+) -> bool {
+    let complement = lit.negated();
+
+    // For ground literals, check if complement is in partial interpretation
+    if lit.is_ground() {
+        let partial = trail.partial_interpretation();
+        return !partial.contains_ground(&complement);
+    }
+
+    // For non-ground literals, check if complement unifies with any selected literal
+    // on the trail. If it does, the selected literal blocks all ground instances.
+    for clause in trail.clauses() {
+        let selected = clause.selected_literal();
+
+        // Check if complement could unify with the selected literal
+        if complement.positive == selected.positive
+            && complement.atom.predicate == selected.atom.predicate
+        {
+            // Try to unify the complement with the selected literal
+            if let UnifyResult::Success(_) = unify_literals(&complement, selected) {
+                // The complement unifies with a selected literal, so all instances
+                // of this literal are blocked (no proper instances)
+                return false;
+            }
+        }
+    }
+
+    // No blocking selected literal found
+    true
+}
+
+/// Check if extended clause would be a conflict.
+///
+/// An extended clause is a conflict if ALL its literals are uniformly false in I[Γ].
+/// This can happen in two ways:
+/// 1. The clause is I-all-true (all literals I-true under I), and their complements
+///    are selected on the trail making them false in I[Γ].
+/// 2. Each literal's complement is uniformly true in I[Γ] (selected on trail).
+fn is_conflict_extended(extended_lits: &[Literal], trail: &Trail) -> bool {
+    let init_interp = trail.initial_interpretation();
+    let trail_interp = trail.interpretation();
+    let partial = trail.partial_interpretation();
+
+    // Check if ALL literals are uniformly false in I[Γ]
+    for lit in extended_lits {
+        // A literal is uniformly false in I[Γ] if:
+        // 1. It's I-true and its complement is uniformly true in I[Γ] (selected)
+        // 2. It's I-false and its complement is in I^p(Γ) (selected makes complement true)
+
+        let complement = lit.negated();
+
+        if init_interp.is_true(lit) {
+            // I-true literal: needs complement to be uniformly true
+            if !trail_interp.is_uniformly_true(&complement) {
+                return false;
+            }
+        } else {
+            // I-false literal: needs complement to be in I^p(Γ)
+            if !partial.contains_ground(&complement) {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+/// Find a blocking clause for a critical extension.
+///
+/// A blocking clause is an I-all-true clause in dp(Γ) whose selected literal
+/// complements the extended clause's selected literal.
+///
+/// For a CRITICAL extension (not a conflict), the blocker must be on a DIFFERENT
+/// predicate than the side premises used in the extension. If the blocker is on
+/// the same predicate as a side premise, it's a true conflict, not replaceable.
+fn find_blocking_clause(
+    trail: &Trail,
+    extended: &ConstrainedClause,
+    dp_len: usize,
+    side_premise_predicates: &std::collections::HashSet<String>,
+) -> Option<usize> {
+    let init_interp = trail.initial_interpretation();
+    let selected = extended.selected_literal();
+
+    // Look for I-all-true clauses in dp(Γ) that block the selected literal
+    for idx in 0..dp_len {
+        let clause = &trail.clauses()[idx];
+        let clause_selected = clause.selected_literal();
+
+        // Check if clause is I-all-true and blocks selected literal
+        if init_interp.is_true(clause_selected) {
+            // Check if clause's selected literal complements extended's selected
+            if selected.positive != clause_selected.positive
+                && selected.atom.predicate == clause_selected.atom.predicate
+            {
+                if let UnifyResult::Success(_) = unify_literals(&selected.negated(), clause_selected) {
+                    // Check if constraints intersect
+                    if extended.constraint.intersects(&clause.constraint) {
+                        // Only a critical extension if blocker is on DIFFERENT predicate
+                        // than the side premises. Otherwise it's a true conflict.
+                        if !side_premise_predicates.contains(&clause_selected.atom.predicate) {
+                            return Some(idx);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -219,6 +781,84 @@ mod tests {
                 );
             }
             other => panic!("Expected extension via semantic falsifier, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_extension_prefers_fresh_literal_over_already_selected() {
+        // Scenario: Trail has (p∨q) with p selected
+        // When trying to extend (p∨q) again, the clause should NOT be extended
+        // because p is already in I^p(Γ), making the clause satisfied/redundant.
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+        // Add (p∨q) with p selected (index 0)
+        let first_clause = ConstrainedClause::with_constraint(
+            Clause::new(vec![
+                Literal::pos("p", vec![]),
+                Literal::pos("q", vec![]),
+            ]),
+            Constraint::True,
+            0, // p selected
+        );
+        trail.push(first_clause);
+
+        // Now try to extend (p∨q) from theory
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![
+            Literal::pos("p", vec![]),
+            Literal::pos("q", vec![]),
+        ]));
+
+        // Debug: check partial interpretation state
+        let partial = trail.partial_interpretation();
+        let p = Literal::pos("p", vec![]);
+        let q = Literal::pos("q", vec![]);
+        eprintln!("p in partial: {}", partial.contains_ground(&p));
+        eprintln!("q in partial: {}", partial.contains_ground(&q));
+
+        // Since p is already selected on the trail, the clause (p∨q) is
+        // satisfied in I[Γ] and should NOT be extended.
+        match sggs_extension(&trail, &theory) {
+            ExtensionResult::NoExtension => {
+                // Correct! The clause is redundant because p is already satisfied.
+            }
+            other => panic!(
+                "Expected NoExtension since clause is satisfied by p, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_extension_selects_fresh_literal_when_first_is_complementary() {
+        // Scenario: Trail has ¬p selected, theory has (p∨q)
+        // When extending, should select q because p is blocked by ¬p (no proper instances)
+        let mut trail = Trail::new(InitialInterpretation::AllNegative);
+
+        // Add unit clause ¬p with ¬p selected
+        trail.push(ConstrainedClause::with_constraint(
+            Clause::new(vec![Literal::neg("p", vec![])]),
+            Constraint::True,
+            0,
+        ));
+
+        // Theory has (p∨q)
+        let mut theory = Theory::new();
+        theory.add_clause(Clause::new(vec![
+            Literal::pos("p", vec![]),
+            Literal::pos("q", vec![]),
+        ]));
+
+        match sggs_extension(&trail, &theory) {
+            ExtensionResult::Extended(cc) => {
+                // p has no proper instances (blocked by ¬p), so q should be selected
+                assert_eq!(
+                    cc.selected_literal(),
+                    &Literal::pos("q", vec![]),
+                    "Should select q since p is blocked by ¬p"
+                );
+            }
+            other => panic!("Expected Extended with q selected, got {:?}", other),
         }
     }
 }

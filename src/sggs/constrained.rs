@@ -22,21 +22,30 @@ pub struct ConstrainedClause {
 impl ConstrainedClause {
     /// Create a constrained clause with no constraint (True).
     pub fn new(clause: Clause, selected: usize) -> Self {
-        todo!("ConstrainedClause::new implementation")
+        ConstrainedClause {
+            constraint: Constraint::True,
+            clause,
+            selected,
+        }
     }
 
     /// Create a constrained clause with an explicit constraint.
     pub fn with_constraint(clause: Clause, constraint: Constraint, selected: usize) -> Self {
-        todo!("ConstrainedClause::with_constraint implementation")
+        ConstrainedClause {
+            constraint,
+            clause,
+            selected,
+        }
     }
 
     /// Get the selected literal.
     pub fn selected_literal(&self) -> &Literal {
-        todo!("ConstrainedClause::selected_literal implementation")
+        &self.clause.literals[self.selected]
     }
 
     /// Check if this is a conflict clause in the given interpretation.
-    pub fn is_conflict(&self, _interp: &TrailInterpretation) -> bool {
-        todo!("ConstrainedClause::is_conflict implementation")
+    /// A conflict clause has all literals uniformly false.
+    pub fn is_conflict(&self, interp: &TrailInterpretation) -> bool {
+        self.clause.literals.iter().all(|lit| interp.is_uniformly_false(lit))
     }
 }

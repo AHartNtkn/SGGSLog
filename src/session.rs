@@ -47,43 +47,216 @@ pub struct Session {
     active_query: Option<QueryStream>,
 }
 
+/// Default timeout for derivations (5 seconds).
+const DEFAULT_TIMEOUT_MS: u64 = 5000;
+
 impl Session {
     /// Create a new empty session.
     pub fn new() -> Self {
-        todo!("Session::new implementation")
+        let mut config = DerivationConfig::default();
+        config.timeout_ms = Some(DEFAULT_TIMEOUT_MS);
+        Session {
+            theory: Theory::new(),
+            config,
+            user_signature: UserSignature::empty(),
+            projection_policy: ProjectionPolicy::OnlyUserSymbols,
+            active_query: None,
+        }
     }
 
     /// Create a session with the given configuration.
-    pub fn with_config(_config: DerivationConfig) -> Self {
-        todo!("Session::with_config implementation")
+    pub fn with_config(config: DerivationConfig) -> Self {
+        Session {
+            theory: Theory::new(),
+            config,
+            user_signature: UserSignature::empty(),
+            projection_policy: ProjectionPolicy::OnlyUserSymbols,
+            active_query: None,
+        }
     }
 
     /// Execute a parsed statement.
-    pub fn execute_statement(&mut self, _stmt: Statement) -> Result<ExecResult, SessionError> {
-        todo!("Session::execute_statement implementation")
+    pub fn execute_statement(&mut self, stmt: Statement) -> Result<ExecResult, SessionError> {
+        match stmt {
+            Statement::Clause(clause) => {
+                // Track user signature from the clause before adding
+                self.user_signature.extend_from_clause(&clause);
+                self.theory.add_clause(clause);
+                Ok(ExecResult::ClauseAdded)
+            }
+            Statement::Formula(formula) => {
+                // Track user signature from the formula before clausifying
+                self.user_signature.extend_from_formula(&formula);
+                let clauses = clausify_statement(&Statement::Formula(formula))
+                    .map_err(|e| SessionError { message: e.to_string() })?;
+                for clause in clauses {
+                    self.theory.add_clause(clause);
+                }
+                Ok(ExecResult::ClauseAdded)
+            }
+            Statement::Query(query) => {
+                let result = self.execute_query(query.literals.clone());
+                Ok(ExecResult::QueryResult(result))
+            }
+            Statement::Directive(directive) => {
+                match directive {
+                    Directive::Next => {
+                        // Get next answer from active query
+                        let result = self.next_answer()?;
+                        Ok(ExecResult::QueryResult(result))
+                    }
+                    _ => {
+                        let result = self.apply_directive(directive)?;
+                        Ok(ExecResult::DirectiveApplied(result))
+                    }
+                }
+            }
+        }
     }
 
     /// Execute a query (list of literals).
-    pub fn execute_query(&mut self, _lits: Vec<Literal>) -> QueryResult {
-        todo!("Session::execute_query implementation")
+    pub fn execute_query(&mut self, lits: Vec<Literal>) -> QueryResult {
+        let query = Query::new(lits);
+        let stream = answer_query_projected(
+            &self.theory,
+            &query,
+            self.config.clone(),
+            &self.user_signature,
+            self.projection_policy,
+        );
+        self.active_query = Some(stream);
+        // Call next on the stored stream
+        self.active_query.as_mut().unwrap().next()
     }
 
     /// Load a file and add all its clauses to the theory.
-    pub fn load_file(&mut self, _path: &str) -> Result<DirectiveResult, SessionError> {
-        todo!("Session::load_file implementation")
+    pub fn load_file(&mut self, path: &str) -> Result<DirectiveResult, SessionError> {
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| SessionError { message: format!("Failed to read file '{}': {}", path, e) })?;
+        let stmts = parse_file(&contents)
+            .map_err(|e| SessionError { message: format!("Parse error: {}", e) })?;
+
+        // Validate that file contains only clauses/formulas, not queries/directives
+        for stmt in &stmts {
+            match stmt {
+                Statement::Query(_) => {
+                    return Err(SessionError {
+                        message: "Cannot load file containing queries".to_string(),
+                    });
+                }
+                Statement::Directive(_) => {
+                    return Err(SessionError {
+                        message: "Cannot load file containing directives".to_string(),
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        // Track user signatures and clausify
+        let mut clause_count = 0;
+        for stmt in &stmts {
+            match stmt {
+                Statement::Clause(clause) => {
+                    self.user_signature.extend_from_clause(clause);
+                }
+                Statement::Formula(formula) => {
+                    self.user_signature.extend_from_formula(formula);
+                }
+                _ => {}
+            }
+        }
+
+        let clauses = clausify_statements(&stmts)
+            .map_err(|e| SessionError { message: e.to_string() })?;
+        clause_count = clauses.len();
+        for clause in clauses {
+            self.theory.add_clause(clause);
+        }
+
+        Ok(DirectiveResult::Loaded {
+            path: path.to_string(),
+            clauses: clause_count,
+        })
     }
 
     /// Apply a directive.
     pub fn apply_directive(
         &mut self,
-        _directive: Directive,
+        directive: Directive,
     ) -> Result<DirectiveResult, SessionError> {
-        todo!("Session::apply_directive implementation")
+        match directive {
+            Directive::Load(path) => self.load_file(&path),
+            Directive::Set(setting) => self.apply_setting(setting),
+            Directive::Next => {
+                // Return the next answer from the active query
+                if let Some(ref mut stream) = self.active_query {
+                    let result = stream.next();
+                    // Return as a DirectiveResult - we'll need to wrap it
+                    // For now, we return an error since DirectiveResult doesn't handle query results
+                    Err(SessionError {
+                        message: "Use execute_statement with Query for query results".to_string(),
+                    })
+                } else {
+                    Err(SessionError {
+                        message: "No active query".to_string(),
+                    })
+                }
+            }
+            Directive::Quit => {
+                // Quit is typically handled by the REPL, not the session
+                Err(SessionError {
+                    message: "Quit directive should be handled by REPL".to_string(),
+                })
+            }
+        }
+    }
+
+    /// Get the next answer from the active query stream.
+    pub fn next_answer(&mut self) -> Result<QueryResult, SessionError> {
+        if let Some(ref mut stream) = self.active_query {
+            Ok(stream.next())
+        } else {
+            Err(SessionError {
+                message: "No active query".to_string(),
+            })
+        }
     }
 
     /// Update the configuration from a key/value pair.
-    pub fn apply_setting(&mut self, _setting: Setting) -> Result<DirectiveResult, SessionError> {
-        todo!("Session::apply_setting implementation")
+    pub fn apply_setting(&mut self, setting: Setting) -> Result<DirectiveResult, SessionError> {
+        match &setting {
+            Setting::TimeoutMs(ms) => {
+                self.config.timeout_ms = Some(*ms);
+            }
+            Setting::Projection(proj_setting) => {
+                self.projection_policy = match proj_setting {
+                    ProjectionSetting::OnlyUserSymbols => ProjectionPolicy::OnlyUserSymbols,
+                    ProjectionSetting::AllowInternal => ProjectionPolicy::AllowInternal,
+                };
+            }
+            Setting::Unknown { key, value } => {
+                // Handle known settings that might be in Unknown form
+                use crate::sggs::InitialInterpretation;
+                if key == "initial_interpretation" || key == "interpretation" {
+                    let interp = match value.as_str() {
+                        "positive" | "+" => InitialInterpretation::AllPositive,
+                        "negative" | "-" => InitialInterpretation::AllNegative,
+                        _ => {
+                            return Err(SessionError {
+                                message: format!("Unknown initial interpretation: {}", value),
+                            });
+                        }
+                    };
+                    self.config.initial_interp = interp;
+                } else {
+                    return Err(SessionError {
+                        message: format!("Unknown setting: {} = {}", key, value),
+                    });
+                }
+            }
+        }
+        Ok(DirectiveResult::Set(setting))
     }
 
     /// Access the current theory.

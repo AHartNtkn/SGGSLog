@@ -1,6 +1,9 @@
 //! SGGS-Splitting for clause decomposition.
 
 use super::ConstrainedClause;
+use crate::constraint::{AtomicConstraint, Constraint};
+use crate::syntax::{Clause, Term};
+use crate::unify::{unify_literals, UnifyResult};
 
 /// Result of SGGS-Splitting.
 #[derive(Debug)]
@@ -14,11 +17,11 @@ pub struct SplitResult {
 /// When two clauses have overlapping selected literals, splitting
 /// partitions one into constrained instances to handle each case.
 pub fn sggs_splitting(
-    _clause: &ConstrainedClause,
-    _other: &ConstrainedClause,
+    clause: &ConstrainedClause,
+    other: &ConstrainedClause,
 ) -> Option<SplitResult> {
     // Default: split using the selected literal of `other`.
-    sggs_splitting_on(_clause, _other, _other.selected)
+    sggs_splitting_on(clause, other, other.selected)
 }
 
 /// SGGS-Splitting by a specific literal of the other clause.
@@ -26,11 +29,188 @@ pub fn sggs_splitting(
 /// This allows splitting on a non-selected literal, which is permitted by SGGS
 /// to expose intersections and enable deletion (Bonacina 2016, Sect. 4.2).
 pub fn sggs_splitting_on(
-    _clause: &ConstrainedClause,
-    _other: &ConstrainedClause,
-    _other_lit_idx: usize,
+    clause: &ConstrainedClause,
+    other: &ConstrainedClause,
+    other_lit_idx: usize,
 ) -> Option<SplitResult> {
-    todo!("sggs_splitting_on implementation")
+    let clause_lit = clause.selected_literal();
+    let other_lit = &other.clause.literals[other_lit_idx];
+
+    // The literals must have the same predicate to potentially intersect
+    if clause_lit.atom.predicate != other_lit.atom.predicate {
+        return None;
+    }
+
+    // Try to unify the literals (ignoring sign for intersection check)
+    let sigma = match unify_literals(clause_lit, other_lit) {
+        UnifyResult::Success(s) => s,
+        UnifyResult::Failure(_) => return None,
+    };
+
+    // Build the intersection constraint from the unifier
+    // For each variable in clause's literal that gets bound, add a constraint
+    let mut intersection_constraint = clause.constraint.clone();
+    let mut has_constraint = false;
+
+    for (idx, (clause_arg, other_arg)) in clause_lit
+        .atom
+        .args
+        .iter()
+        .zip(other_lit.atom.args.iter())
+        .enumerate()
+    {
+        // Only create constraints for variables in the clause being split
+        if let Term::Var(_) = clause_arg {
+            match other_arg {
+                Term::Var(_) => {
+                    // Variable vs variable: no constraint needed.
+                    // Both represent all possible ground instances, so the intersection
+                    // is everything and the split would be trivial.
+                    // Even if the unifier binds clause_arg to other_arg (or vice versa),
+                    // this is just a variable renaming, not a real constraint.
+                }
+                Term::App(fn_sym, _) => {
+                    if fn_sym.arity == 0 {
+                        // Constant: use Identical constraint
+                        intersection_constraint = intersection_constraint.and(
+                            Constraint::Atomic(AtomicConstraint::Identical(
+                                clause_arg.clone(),
+                                other_arg.clone(),
+                            )),
+                        );
+                    } else {
+                        // Function application: use RootEquals constraint
+                        intersection_constraint = intersection_constraint.and(
+                            Constraint::Atomic(AtomicConstraint::RootEquals(
+                                clause_arg.clone(),
+                                fn_sym.name.clone(),
+                            )),
+                        );
+                    }
+                    has_constraint = true;
+                }
+            }
+        } else if let Term::App(clause_fn, clause_args) = clause_arg {
+            // Clause has a function application, check if it matches other
+            match other_arg {
+                Term::Var(_) => {
+                    // Other is a variable, so it can match anything
+                    // No constraint needed
+                }
+                Term::App(other_fn, _) => {
+                    // Both are applications - they must have same root symbol
+                    if clause_fn.name != other_fn.name || clause_fn.arity != other_fn.arity {
+                        // Different function symbols - no intersection possible
+                        return None;
+                    }
+                    // Same function symbol - recursively check args (handled by unification)
+                }
+            }
+        }
+    }
+
+    // If no constraints were added, the split is trivial
+    if !has_constraint {
+        return None;
+    }
+
+    // Check if the intersection constraint combined with other's constraint is satisfiable
+    let combined = intersection_constraint
+        .clone()
+        .and(other.constraint.clone());
+    if !combined.is_satisfiable() {
+        // Constraints exclude intersection
+        return None;
+    }
+
+    // Build the complement constraint (negation of intersection conditions)
+    let complement_constraint = build_complement_constraint(clause, clause_lit, other_lit);
+
+    // Check if complement is satisfiable
+    if !complement_constraint.is_satisfiable() {
+        // Degenerate case: everything is in the intersection
+        // Return just the intersection part
+        return Some(SplitResult {
+            parts: vec![ConstrainedClause::with_constraint(
+                clause.clause.clone(),
+                intersection_constraint.simplify(),
+                clause.selected,
+            )],
+        });
+    }
+
+    // Create the two parts
+    let intersection_part = ConstrainedClause::with_constraint(
+        clause.clause.clone(),
+        intersection_constraint.simplify(),
+        clause.selected,
+    );
+
+    let complement_part = ConstrainedClause::with_constraint(
+        clause.clause.clone(),
+        complement_constraint.simplify(),
+        clause.selected,
+    );
+
+    Some(SplitResult {
+        parts: vec![intersection_part, complement_part],
+    })
+}
+
+/// Extract a Var from a Term::Var
+fn extract_var(term: &Term) -> crate::syntax::Var {
+    match term {
+        Term::Var(v) => v.clone(),
+        _ => panic!("expected Var"),
+    }
+}
+
+/// Build the complement constraint for the split.
+fn build_complement_constraint(
+    clause: &ConstrainedClause,
+    clause_lit: &crate::syntax::Literal,
+    other_lit: &crate::syntax::Literal,
+) -> Constraint {
+    let mut complement_parts = Vec::new();
+
+    for (clause_arg, other_arg) in clause_lit.atom.args.iter().zip(other_lit.atom.args.iter()) {
+        if let Term::Var(_) = clause_arg {
+            match other_arg {
+                Term::Var(_) => {
+                    // No constraint contribution from variable vs variable
+                }
+                Term::App(fn_sym, _) => {
+                    if fn_sym.arity == 0 {
+                        // Constant: use NotIdentical constraint
+                        complement_parts.push(Constraint::Atomic(AtomicConstraint::NotIdentical(
+                            clause_arg.clone(),
+                            other_arg.clone(),
+                        )));
+                    } else {
+                        // Function application: use RootNotEquals constraint
+                        complement_parts.push(Constraint::Atomic(AtomicConstraint::RootNotEquals(
+                            clause_arg.clone(),
+                            fn_sym.name.clone(),
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    if complement_parts.is_empty() {
+        return Constraint::False; // No complement possible
+    }
+
+    // The complement is the disjunction of negated constraints
+    // (x ≠ a ∨ y ≠ b) is the complement of (x = a ∧ y = b)
+    let mut result = complement_parts.pop().unwrap();
+    for part in complement_parts {
+        result = result.or(part);
+    }
+
+    // Combine with original clause constraint
+    clause.constraint.clone().and(result)
 }
 
 #[cfg(test)]

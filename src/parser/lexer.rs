@@ -8,8 +8,9 @@ pub enum Token {
     Variable(String),   // uppercase: variables
 
     // Delimiters
-    LParen, // (
-    RParen, // )
+    LParen,  // (
+    RParen,  // )
+    Newline, // newline (significant for statement separation)
 
     // Logic operators (Unicode)
     Not,     // ¬
@@ -38,6 +39,8 @@ pub struct Lexer<'a> {
     position: usize,
     line: usize,
     column: usize,
+    /// Whether a newline was skipped before the current token
+    pub newline_before: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -48,12 +51,13 @@ impl<'a> Lexer<'a> {
             position: 0,
             line: 1,
             column: 1,
+            newline_before: false,
         }
     }
 
     /// Get the next token.
     pub fn next_token(&mut self) -> Result<Token, LexError> {
-        self.skip_whitespace_and_comments();
+        self.newline_before = self.skip_whitespace_and_comments();
 
         if self.position >= self.input.len() {
             return Ok(Token::Eof);
@@ -128,6 +132,11 @@ impl<'a> Lexer<'a> {
             _ => {}
         }
 
+        // Numbers (for settings like timeout_ms)
+        if ch.is_ascii_digit() {
+            return Ok(self.lex_identifier());
+        }
+
         // Identifiers, variables, and Skolem names
         if ch.is_ascii_lowercase() || ch == '$' {
             return Ok(self.lex_identifier());
@@ -172,19 +181,24 @@ impl<'a> Lexer<'a> {
         self.position += bytes;
     }
 
-    fn skip_whitespace_and_comments(&mut self) {
+    fn skip_whitespace_and_comments(&mut self) -> bool {
+        let mut saw_newline = false;
         while self.position < self.input.len() {
             let remaining = &self.input[self.position..];
             let ch = remaining.chars().next().unwrap();
 
-            if ch.is_whitespace() {
+            if ch == '\n' {
+                saw_newline = true;
+                self.advance(ch.len_utf8());
+            } else if ch.is_whitespace() {
                 self.advance(ch.len_utf8());
             } else if remaining.starts_with("//") {
-                // Skip to end of line
+                // Skip to end of line (but the newline at the end counts)
                 while self.position < self.input.len() {
                     let c = self.input[self.position..].chars().next().unwrap();
                     self.advance(c.len_utf8());
                     if c == '\n' {
+                        saw_newline = true;
                         break;
                     }
                 }
@@ -192,6 +206,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        saw_newline
     }
 
     fn lex_identifier(&mut self) -> Token {
@@ -207,6 +222,12 @@ impl<'a> Lexer<'a> {
         }
 
         let name = self.input[start..self.position].to_string();
+
+        // Check for keywords
+        if name == "clause" {
+            // Still return as Identifier, parser handles it
+        }
+
         Token::Identifier(name)
     }
 

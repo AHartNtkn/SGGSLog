@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use super::{Clause, Term};
+use super::{Clause, Formula, Term};
 
 /// Predicate signature (name, arity, optional argument sorts).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -60,6 +60,13 @@ impl Signature {
         sig
     }
 
+    /// Collect symbols from a formula.
+    pub fn from_formula(formula: &Formula) -> Signature {
+        let mut sig = Signature::empty();
+        collect_formula_symbols(formula, &mut sig);
+        sig
+    }
+
     /// True if any predicate with this name exists.
     pub fn contains_predicate_name(&self, name: &str) -> bool {
         self.predicates.iter().any(|p| p.name == name)
@@ -114,6 +121,32 @@ fn collect_term_symbols(term: &Term, sig: &mut Signature) {
             for a in args {
                 collect_term_symbols(a, sig);
             }
+        }
+    }
+}
+
+fn collect_atom_symbols(atom: &super::Atom, sig: &mut Signature) {
+    let arg_sorts = atom.args.iter().map(term_sort).collect::<Vec<_>>();
+    sig.predicates.insert(PredSig {
+        name: atom.predicate.clone(),
+        arity: atom.args.len(),
+        arg_sorts,
+    });
+    for arg in &atom.args {
+        collect_term_symbols(arg, sig);
+    }
+}
+
+fn collect_formula_symbols(formula: &Formula, sig: &mut Signature) {
+    match formula {
+        Formula::Atom(atom) => collect_atom_symbols(atom, sig),
+        Formula::Not(inner) => collect_formula_symbols(inner, sig),
+        Formula::And(left, right) | Formula::Or(left, right) | Formula::Implies(left, right) => {
+            collect_formula_symbols(left, sig);
+            collect_formula_symbols(right, sig);
+        }
+        Formula::Forall(_, inner) | Formula::Exists(_, inner) => {
+            collect_formula_symbols(inner, sig);
         }
     }
 }
@@ -181,5 +214,13 @@ impl UserSignature {
             arity,
             result_sort: result_sort.map(|s| s.to_string()),
         });
+    }
+
+    pub fn extend_from_clause(&mut self, clause: &Clause) {
+        self.inner.extend(&Signature::from_clause(clause));
+    }
+
+    pub fn extend_from_formula(&mut self, formula: &Formula) {
+        self.inner.extend(&Signature::from_formula(formula));
     }
 }

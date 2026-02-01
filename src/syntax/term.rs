@@ -1,6 +1,7 @@
 //! First-order terms: variables and function applications (including 0-ary constants).
 
 use std::collections::HashSet;
+use std::fmt;
 
 use crate::unify::Substitution;
 
@@ -34,6 +35,12 @@ impl Var {
 
     pub fn sort(&self) -> Option<&str> {
         self.sort.as_deref()
+    }
+}
+
+impl fmt::Display for Var {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -116,28 +123,71 @@ impl Term {
 
     /// Collect all variables occurring in this term.
     pub fn variables(&self) -> HashSet<Var> {
-        todo!("variables implementation")
+        match self {
+            Term::Var(var) => {
+                let mut set = HashSet::new();
+                set.insert(var.clone());
+                set
+            }
+            Term::App(_, args) => {
+                let mut set = HashSet::new();
+                for arg in args {
+                    set.extend(arg.variables());
+                }
+                set
+            }
+        }
     }
 
     /// Check if this term contains no variables (is ground).
     pub fn is_ground(&self) -> bool {
-        todo!("is_ground implementation")
+        match self {
+            Term::Var(_) => false,
+            Term::App(_, args) => args.iter().all(|arg| arg.is_ground()),
+        }
     }
 
     /// Apply a substitution to this term.
     pub fn apply_subst(&self, subst: &Substitution) -> Term {
-        todo!("apply_subst implementation")
+        subst.apply_to_term(self)
     }
 
     /// Get the root symbol of this term (function name or constant name).
     /// Returns None for variables.
     pub fn root_symbol(&self) -> Option<&str> {
-        todo!("root_symbol implementation")
+        match self {
+            Term::Var(_) => None,
+            Term::App(fn_sym, _) => Some(&fn_sym.name),
+        }
     }
 
     /// Check if a variable occurs in this term (for occurs check in unification).
     pub fn occurs(&self, var: &Var) -> bool {
-        todo!("occurs implementation")
+        match self {
+            Term::Var(v) => v == var,
+            Term::App(_, args) => args.iter().any(|arg| arg.occurs(var)),
+        }
+    }
+}
+
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Term::Var(var) => write!(f, "{}", var),
+            Term::App(fn_sym, args) => {
+                if args.is_empty() {
+                    // Constant (0-ary function)
+                    write!(f, "{}", fn_sym.name)
+                } else {
+                    // Function application in S-expression format
+                    write!(f, "({}", fn_sym.name)?;
+                    for arg in args {
+                        write!(f, " {}", arg)?;
+                    }
+                    write!(f, ")")
+                }
+            }
+        }
     }
 }
 

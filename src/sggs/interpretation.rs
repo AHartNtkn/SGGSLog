@@ -40,7 +40,66 @@ impl Default for InitialInterpretation {
 impl InitialInterpretation {
     /// Truth value of a ground literal in I (may be Unknown).
     pub fn truth_value(&self, lit: &Literal) -> TruthValue {
-        todo!("InitialInterpretation::truth_value implementation")
+        match self {
+            InitialInterpretation::AllPositive => {
+                // All atoms are true in I+
+                // Positive literal = atom, so true
+                // Negative literal = not(atom), so false
+                if lit.positive {
+                    TruthValue::True
+                } else {
+                    TruthValue::False
+                }
+            }
+            InitialInterpretation::AllNegative => {
+                // All atoms are false in I-
+                // Positive literal = atom, so false
+                // Negative literal = not(atom), so true
+                if lit.positive {
+                    TruthValue::False
+                } else {
+                    TruthValue::True
+                }
+            }
+            InitialInterpretation::Explicit { true_atoms, false_atoms, default } => {
+                // Check if the atom is in true_atoms or false_atoms
+                let atom = &lit.atom;
+                if true_atoms.contains(atom) {
+                    // Atom is true, so positive literal is true, negative is false
+                    if lit.positive {
+                        TruthValue::True
+                    } else {
+                        TruthValue::False
+                    }
+                } else if false_atoms.contains(atom) {
+                    // Atom is false, so positive literal is false, negative is true
+                    if lit.positive {
+                        TruthValue::False
+                    } else {
+                        TruthValue::True
+                    }
+                } else {
+                    // Use default for the atom
+                    match default {
+                        TruthValue::True => {
+                            if lit.positive {
+                                TruthValue::True
+                            } else {
+                                TruthValue::False
+                            }
+                        }
+                        TruthValue::False => {
+                            if lit.positive {
+                                TruthValue::False
+                            } else {
+                                TruthValue::True
+                            }
+                        }
+                        TruthValue::Unknown => TruthValue::Unknown,
+                    }
+                }
+            }
+        }
     }
 
     /// Is this ground literal true in I?
@@ -54,15 +113,99 @@ impl InitialInterpretation {
     }
 
     /// Is this ground atom true in I?
-    pub fn atom_is_true(&self, _atom: &Atom) -> bool {
-        todo!("InitialInterpretation::atom_is_true implementation")
+    pub fn atom_is_true(&self, atom: &Atom) -> bool {
+        match self {
+            InitialInterpretation::AllPositive => true,
+            InitialInterpretation::AllNegative => false,
+            InitialInterpretation::Explicit { true_atoms, false_atoms, default } => {
+                if true_atoms.contains(atom) {
+                    true
+                } else if false_atoms.contains(atom) {
+                    false
+                } else {
+                    matches!(default, TruthValue::True)
+                }
+            }
+        }
     }
 
     /// Attempt to compute a semantic falsifier for a clause in this interpretation.
     ///
     /// Returns a substitution that makes the clause false in I, if one is known.
-    pub fn semantic_falsifier(&self, _clause: &Clause) -> Option<Substitution> {
-        todo!("InitialInterpretation::semantic_falsifier implementation")
+    /// For uniform interpretations (AllPositive/AllNegative), returns the empty
+    /// substitution if all literals are uniformly false under I.
+    /// For explicit interpretations, returns None if any literal's truth is Unknown.
+    pub fn semantic_falsifier(&self, clause: &Clause) -> Option<Substitution> {
+        // A clause is false in I if all its literals are false in I.
+        // For uniform interpretations:
+        // - AllNegative: positive literals are false, negative literals are true
+        // - AllPositive: negative literals are false, positive literals are true
+        //
+        // The semantic falsifier is a substitution σ such that σ(clause) is false in I.
+        // For uniformly false clauses, the most general falsifier is the empty substitution.
+
+        match self {
+            InitialInterpretation::AllNegative => {
+                // All positive literals are false under I-.
+                // If the clause has only positive literals, it's uniformly false.
+                // If the clause has any negative literal, it has a true literal.
+                if clause.literals.iter().all(|lit| lit.positive) {
+                    // All literals are positive, hence all false under I-.
+                    // The empty substitution is the most general falsifier.
+                    Some(Substitution::empty())
+                } else {
+                    // There's a negative literal which is true under I-
+                    None
+                }
+            }
+            InitialInterpretation::AllPositive => {
+                // All negative literals are false under I+.
+                // If the clause has only negative literals, it's uniformly false.
+                if clause.literals.iter().all(|lit| !lit.positive) {
+                    // All literals are negative, hence all false under I+.
+                    Some(Substitution::empty())
+                } else {
+                    // There's a positive literal which is true under I+
+                    None
+                }
+            }
+            InitialInterpretation::Explicit { true_atoms, false_atoms, default } => {
+                // For explicit interpretation, we need all literals to be ground and false.
+                // If any literal's truth is Unknown, we cannot determine a falsifier.
+                for lit in &clause.literals {
+                    // Literal must be ground for explicit evaluation
+                    if !lit.is_ground() {
+                        return None;
+                    }
+                    let atom = &lit.atom;
+                    let atom_truth = if true_atoms.contains(atom) {
+                        TruthValue::True
+                    } else if false_atoms.contains(atom) {
+                        TruthValue::False
+                    } else {
+                        *default
+                    };
+
+                    let lit_truth = match atom_truth {
+                        TruthValue::True => {
+                            if lit.positive { TruthValue::True } else { TruthValue::False }
+                        }
+                        TruthValue::False => {
+                            if lit.positive { TruthValue::False } else { TruthValue::True }
+                        }
+                        TruthValue::Unknown => TruthValue::Unknown,
+                    };
+
+                    match lit_truth {
+                        TruthValue::True => return None, // Clause is satisfied
+                        TruthValue::Unknown => return None, // Cannot determine
+                        TruthValue::False => continue, // This literal is false, check others
+                    }
+                }
+                // All literals are false under this interpretation
+                Some(Substitution::empty())
+            }
+        }
     }
 }
 

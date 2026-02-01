@@ -1,6 +1,9 @@
 //! REPL implementation.
 
-use crate::session::Session;
+use crate::parser::{parse_file, Directive, Setting, Statement};
+use crate::session::{DirectiveResult, ExecResult, Session, SessionError};
+use crate::sggs::QueryResult;
+use std::io::{self, BufRead, Write};
 
 /// REPL error.
 #[derive(Debug)]
@@ -16,6 +19,12 @@ impl std::fmt::Display for ReplError {
 
 impl std::error::Error for ReplError {}
 
+impl From<SessionError> for ReplError {
+    fn from(e: SessionError) -> Self {
+        ReplError { message: e.message }
+    }
+}
+
 /// Interactive REPL for SGGSLog.
 pub struct Repl {
     session: Session,
@@ -24,22 +33,201 @@ pub struct Repl {
 impl Repl {
     /// Create a new REPL.
     pub fn new() -> Self {
-        todo!("Repl::new implementation")
+        Repl {
+            session: Session::new(),
+        }
     }
 
     /// Load a file into the REPL.
-    pub fn load_file(&mut self, _path: &str) -> Result<(), ReplError> {
-        todo!("Repl::load_file implementation")
+    pub fn load_file(&mut self, path: &str) -> Result<(), ReplError> {
+        self.session.load_file(path).map_err(|e| ReplError { message: e.message })?;
+        Ok(())
     }
 
     /// Process a line of input.
-    pub fn process_line(&mut self, _line: &str) -> Result<String, ReplError> {
-        todo!("Repl::process_line implementation")
+    pub fn process_line(&mut self, line: &str) -> Result<String, ReplError> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return Ok(String::new());
+        }
+
+        // Check for REPL commands (start with :)
+        if line.starts_with(':') {
+            return self.process_command(line);
+        }
+
+        // Parse and execute the statement
+        let stmts = parse_file(line)
+            .map_err(|e| ReplError { message: format!("Parse error: {}", e) })?;
+
+        if stmts.is_empty() {
+            return Ok(String::new());
+        }
+
+        // Execute all statements, collect results
+        let mut results = Vec::new();
+        for stmt in stmts {
+            let result = self.execute_statement(stmt)?;
+            if !result.is_empty() {
+                results.push(result);
+            }
+        }
+        Ok(results.join("\n"))
+    }
+
+    /// Process a REPL command (starts with :).
+    fn process_command(&mut self, line: &str) -> Result<String, ReplError> {
+        let parts: Vec<&str> = line[1..].splitn(2, ' ').collect();
+        let cmd = parts[0].trim();
+        let args = parts.get(1).map(|s| s.trim()).unwrap_or("");
+
+        match cmd {
+            "quit" | "q" | "exit" => {
+                Ok("Goodbye!".to_string())
+            }
+            "next" | "n" => {
+                let result = self.session.next_answer()?;
+                Ok(format_query_result(&result))
+            }
+            "set" => {
+                self.process_set_directive(args)
+            }
+            "load" | "l" => {
+                if args.is_empty() {
+                    return Err(ReplError { message: "Usage: :load <filename>".to_string() });
+                }
+                let result = self.session.load_file(args)?;
+                Ok(format_directive_result(&result))
+            }
+            _ => {
+                Err(ReplError { message: format!("Unknown command: {}", cmd) })
+            }
+        }
+    }
+
+    /// Process :set directive.
+    fn process_set_directive(&mut self, args: &str) -> Result<String, ReplError> {
+        let parts: Vec<&str> = args.splitn(2, ' ').collect();
+        if parts.len() < 2 {
+            return Err(ReplError { message: "Usage: :set <key> <value>".to_string() });
+        }
+        let key = parts[0].trim();
+        let value = parts[1].trim();
+
+        let setting = match key {
+            "timeout_ms" | "timeout" => {
+                let ms = value.parse::<u64>()
+                    .map_err(|_| ReplError { message: format!("Invalid timeout value: {}", value) })?;
+                Setting::TimeoutMs(ms)
+            }
+            "projection" => {
+                let proj = match value {
+                    "user" | "only_user" | "user_symbols" => {
+                        crate::parser::ProjectionSetting::OnlyUserSymbols
+                    }
+                    "internal" | "allow_internal" => {
+                        crate::parser::ProjectionSetting::AllowInternal
+                    }
+                    _ => {
+                        return Err(ReplError {
+                            message: format!("Unknown projection mode: {}", value),
+                        });
+                    }
+                };
+                Setting::Projection(proj)
+            }
+            _ => Setting::Unknown { key: key.to_string(), value: value.to_string() },
+        };
+
+        let result = self.session.apply_setting(setting)?;
+        Ok(format_directive_result(&result))
+    }
+
+    /// Execute a parsed statement.
+    fn execute_statement(&mut self, stmt: Statement) -> Result<String, ReplError> {
+        let result = self.session.execute_statement(stmt)?;
+        Ok(format_exec_result(&result))
     }
 
     /// Run the REPL interactively.
     pub fn run(&mut self) -> Result<(), ReplError> {
-        todo!("Repl::run implementation")
+        let stdin = io::stdin();
+        let mut stdout = io::stdout();
+
+        println!("SGGSLog REPL");
+        println!("Type :help for help, :quit to exit.");
+
+        loop {
+            print!("?- ");
+            stdout.flush().map_err(|e| ReplError { message: e.to_string() })?;
+
+            let mut line = String::new();
+            match stdin.lock().read_line(&mut line) {
+                Ok(0) => break, // EOF
+                Ok(_) => {}
+                Err(e) => return Err(ReplError { message: e.to_string() }),
+            }
+
+            let line = line.trim();
+            if line == ":quit" || line == ":q" || line == ":exit" {
+                println!("Goodbye!");
+                break;
+            }
+
+            match self.process_line(line) {
+                Ok(response) => {
+                    if !response.is_empty() {
+                        println!("{}", response);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Format a query result as a string.
+fn format_query_result(result: &QueryResult) -> String {
+    match result {
+        QueryResult::Answer(subst) => {
+            if subst.is_empty() {
+                "true.".to_string()
+            } else {
+                let bindings: Vec<String> = subst.bindings()
+                    .map(|(v, t)| format!("{} = {}", v.name(), t))
+                    .collect();
+                format!("{}", bindings.join(", "))
+            }
+        }
+        QueryResult::Exhausted => "no (more) answers.".to_string(),
+        QueryResult::Timeout => "timeout.".to_string(),
+    }
+}
+
+/// Format a directive result as a string.
+fn format_directive_result(result: &DirectiveResult) -> String {
+    match result {
+        DirectiveResult::Loaded { path, clauses } => {
+            format!("Loaded {} clauses from {}", clauses, path)
+        }
+        DirectiveResult::Set(setting) => match setting {
+            Setting::TimeoutMs(ms) => format!("Set timeout_ms = {}", ms),
+            Setting::Projection(proj) => format!("Set projection = {:?}", proj),
+            Setting::Unknown { key, value } => format!("Set {} = {}", key, value),
+        },
+    }
+}
+
+/// Format an execution result as a string.
+fn format_exec_result(result: &ExecResult) -> String {
+    match result {
+        ExecResult::ClauseAdded => "ok.".to_string(),
+        ExecResult::QueryResult(qr) => format_query_result(qr),
+        ExecResult::DirectiveApplied(dr) => format_directive_result(dr),
     }
 }
 

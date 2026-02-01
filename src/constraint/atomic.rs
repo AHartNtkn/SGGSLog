@@ -22,13 +22,61 @@ impl AtomicConstraint {
     /// Evaluate this constraint under a substitution.
     /// Returns Some(true) if satisfied, Some(false) if violated,
     /// None if it cannot be determined (contains unbound variables).
-    pub fn evaluate(&self, _subst: &Substitution) -> Option<bool> {
-        todo!("AtomicConstraint::evaluate implementation")
+    pub fn evaluate(&self, subst: &Substitution) -> Option<bool> {
+        match self {
+            AtomicConstraint::Identical(t1, t2) => {
+                let t1_applied = subst.apply_to_term(t1);
+                let t2_applied = subst.apply_to_term(t2);
+                // If either term still has variables, result is unknown
+                if !t1_applied.is_ground() || !t2_applied.is_ground() {
+                    None
+                } else {
+                    Some(t1_applied == t2_applied)
+                }
+            }
+            AtomicConstraint::NotIdentical(t1, t2) => {
+                let t1_applied = subst.apply_to_term(t1);
+                let t2_applied = subst.apply_to_term(t2);
+                // If either term still has variables, result is unknown
+                if !t1_applied.is_ground() || !t2_applied.is_ground() {
+                    None
+                } else {
+                    Some(t1_applied != t2_applied)
+                }
+            }
+            AtomicConstraint::RootEquals(t, symbol) => {
+                let t_applied = subst.apply_to_term(t);
+                match t_applied.root_symbol() {
+                    Some(root) => Some(root == symbol),
+                    None => None, // Variable has no root symbol
+                }
+            }
+            AtomicConstraint::RootNotEquals(t, symbol) => {
+                let t_applied = subst.apply_to_term(t);
+                match t_applied.root_symbol() {
+                    Some(root) => Some(root != symbol),
+                    None => None, // Variable has no root symbol
+                }
+            }
+        }
     }
 
     /// Return the negation of this constraint.
     pub fn negate(&self) -> AtomicConstraint {
-        todo!("AtomicConstraint::negate implementation")
+        match self {
+            AtomicConstraint::Identical(t1, t2) => {
+                AtomicConstraint::NotIdentical(t1.clone(), t2.clone())
+            }
+            AtomicConstraint::NotIdentical(t1, t2) => {
+                AtomicConstraint::Identical(t1.clone(), t2.clone())
+            }
+            AtomicConstraint::RootEquals(t, s) => {
+                AtomicConstraint::RootNotEquals(t.clone(), s.clone())
+            }
+            AtomicConstraint::RootNotEquals(t, s) => {
+                AtomicConstraint::RootEquals(t.clone(), s.clone())
+            }
+        }
     }
 }
 

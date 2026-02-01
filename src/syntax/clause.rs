@@ -30,47 +30,53 @@ impl Clause {
 
     /// Create the empty clause (represents contradiction/false).
     pub fn empty() -> Self {
-        todo!("empty implementation")
+        Clause { literals: Vec::new() }
     }
 
     /// Check if this is the empty clause.
     pub fn is_empty(&self) -> bool {
-        todo!("is_empty implementation")
+        self.literals.is_empty()
     }
 
     /// Check if this is a unit clause (exactly one literal).
     pub fn is_unit(&self) -> bool {
-        todo!("is_unit implementation")
+        self.literals.len() == 1
     }
 
     /// Check if this is a Horn clause (at most one positive literal).
     pub fn is_horn(&self) -> bool {
-        todo!("is_horn implementation")
+        self.literals.iter().filter(|l| l.positive).count() <= 1
     }
 
     /// Collect all variables in this clause.
     pub fn variables(&self) -> HashSet<Var> {
-        todo!("Clause::variables implementation")
+        let mut vars = HashSet::new();
+        for lit in &self.literals {
+            vars.extend(lit.variables());
+        }
+        vars
     }
 
     /// Check if this clause is ground (contains no variables).
     pub fn is_ground(&self) -> bool {
-        todo!("Clause::is_ground implementation")
+        self.literals.iter().all(|l| l.is_ground())
     }
 
     /// Apply a substitution to this clause.
     pub fn apply_subst(&self, subst: &Substitution) -> Clause {
-        todo!("Clause::apply_subst implementation")
+        Clause {
+            literals: self.literals.iter().map(|l| l.apply_subst(subst)).collect(),
+        }
     }
 
     /// Get all positive literals in this clause.
     pub fn positive_literals(&self) -> Vec<&Literal> {
-        todo!("positive_literals implementation")
+        self.literals.iter().filter(|l| l.positive).collect()
     }
 
     /// Get all negative literals in this clause.
     pub fn negative_literals(&self) -> Vec<&Literal> {
-        todo!("negative_literals implementation")
+        self.literals.iter().filter(|l| !l.positive).collect()
     }
 
     /// Get the number of literals in this clause.
@@ -79,59 +85,312 @@ impl Clause {
     }
 
     /// Check if this clause is positively ground-preserving (BW20 Def. 4).
+    /// A clause is positively ground-preserving if every variable that appears
+    /// in a positive literal also appears in some negative literal.
     pub fn is_positively_ground_preserving(&self) -> bool {
-        todo!("Clause::is_positively_ground_preserving implementation")
+        let pos_vars: HashSet<Var> = self.positive_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .collect();
+        let neg_vars: HashSet<Var> = self.negative_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .collect();
+        pos_vars.is_subset(&neg_vars)
     }
 
     /// Check if this clause is negatively ground-preserving (BW20 Def. 4).
+    /// A clause is negatively ground-preserving if every variable that appears
+    /// in a negative literal also appears in some positive literal.
     pub fn is_negatively_ground_preserving(&self) -> bool {
-        todo!("Clause::is_negatively_ground_preserving implementation")
+        let pos_vars: HashSet<Var> = self.positive_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .collect();
+        let neg_vars: HashSet<Var> = self.negative_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .collect();
+        neg_vars.is_subset(&pos_vars)
     }
 
     /// Check if this clause is ground-preserving (positively or negatively).
     pub fn is_ground_preserving(&self) -> bool {
-        todo!("Clause::is_ground_preserving implementation")
+        self.is_positively_ground_preserving() || self.is_negatively_ground_preserving()
     }
 
     /// Check if this clause is restrained (BW20 Def. 6) under a given atom ordering.
-    pub fn is_restrained<O: AtomOrder>(&self, _order: &O) -> bool {
-        todo!("Clause::is_restrained implementation")
+    ///
+    /// A clause is restrained if:
+    /// 1. It is positively ground-preserving (Var(C+) ⊆ Var(C-))
+    /// 2. Each non-ground positive literal is dominated by some negative literal
+    pub fn is_restrained<O: AtomOrder>(&self, order: &O) -> bool {
+        use super::order::AtomCmp;
+
+        // Must be positively ground-preserving
+        if !self.is_positively_ground_preserving() {
+            return false;
+        }
+
+        let neg_lits = self.negative_literals();
+
+        // Each non-ground positive literal must be dominated by some negative literal
+        for pos_lit in self.positive_literals() {
+            if pos_lit.is_ground() {
+                continue; // Ground literals don't need to be dominated
+            }
+
+            // Find a dominating negative literal
+            // Equal atoms satisfy the dominance condition (an atom dominates itself)
+            let dominated = neg_lits.iter().any(|neg_lit| {
+                matches!(order.cmp(&neg_lit.atom, &pos_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+            });
+
+            if !dominated {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Check if this clause is negatively restrained (dual of BW20 Def. 6)
     /// under a given atom ordering.
-    pub fn is_negatively_restrained<O: AtomOrder>(&self, _order: &O) -> bool {
-        todo!("Clause::is_negatively_restrained implementation")
+    ///
+    /// A clause is negatively restrained if:
+    /// 1. It is negatively ground-preserving (Var(C-) ⊆ Var(C+))
+    /// 2. Each non-ground negative literal is dominated by some positive literal
+    pub fn is_negatively_restrained<O: AtomOrder>(&self, order: &O) -> bool {
+        use super::order::AtomCmp;
+
+        // Must be negatively ground-preserving
+        if !self.is_negatively_ground_preserving() {
+            return false;
+        }
+
+        let pos_lits = self.positive_literals();
+
+        // Each non-ground negative literal must be dominated by some positive literal
+        for neg_lit in self.negative_literals() {
+            if neg_lit.is_ground() {
+                continue; // Ground literals don't need to be dominated
+            }
+
+            // Find a dominating positive literal
+            // Equal atoms satisfy the dominance condition (an atom dominates itself)
+            let dominated = pos_lits.iter().any(|pos_lit| {
+                matches!(order.cmp(&pos_lit.atom, &neg_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+            });
+
+            if !dominated {
+                return false;
+            }
+        }
+
+        true
     }
 
-    /// Check if this clause is in the PVD fragment (Def. 12, SGGSdpFOL).
+    /// Check if this clause is in the PVD fragment (Positive Variable Depth).
+    ///
+    /// A clause is PVD if:
+    /// 1. It is positively ground-preserving
+    /// 2. For each variable X in positive literals, depth_X(C+) <= depth_X(C-)
     pub fn is_pvd(&self) -> bool {
-        todo!("Clause::is_pvd implementation")
+        // Must be positively ground-preserving
+        if !self.is_positively_ground_preserving() {
+            return false;
+        }
+
+        // Get variables from positive literals
+        let pos_vars: HashSet<Var> = self.positive_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .collect();
+
+        // For each variable in positive literals, check depth constraint
+        for var in pos_vars {
+            let pos_depth = self.max_var_depth_in_literals(&var, true);
+            let neg_depth = self.max_var_depth_in_literals(&var, false);
+
+            // Depth in positive must not exceed depth in negative
+            if pos_depth > neg_depth {
+                return false;
+            }
+        }
+
+        true
     }
 
-    /// Check if this clause is sort-restrained for a given set of infinite sorts (Def. 10)
-    /// under a given atom ordering.
+    /// Compute the maximum depth at which a variable occurs in literals of given polarity.
+    fn max_var_depth_in_literals(&self, var: &Var, positive: bool) -> usize {
+        self.literals
+            .iter()
+            .filter(|l| l.positive == positive)
+            .flat_map(|l| l.atom.args.iter())
+            .map(|t| var_depth_in_term(var, t, 0))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Check if this clause is sort-restrained for a given set of infinite sorts.
+    ///
+    /// Like restrained, but the dominance requirement only applies to variables
+    /// of infinite sorts. Variables of finite sorts are not considered.
     pub fn is_sort_restrained<O: AtomOrder>(
         &self,
-        _infinite_sorts: &HashSet<String>,
-        _order: &O,
+        infinite_sorts: &HashSet<String>,
+        order: &O,
     ) -> bool {
-        todo!("Clause::is_sort_restrained implementation")
+        use super::order::AtomCmp;
+
+        // Get variables from positive literals that have infinite sorts
+        let pos_vars: HashSet<Var> = self.positive_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .collect();
+
+        // Get variables from negative literals that have infinite sorts
+        let neg_vars: HashSet<Var> = self.negative_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .collect();
+
+        // Must be "sort ground-preserving": infinite-sort vars in C+ ⊆ infinite-sort vars in C-
+        if !pos_vars.is_subset(&neg_vars) {
+            return false;
+        }
+
+        let neg_lits = self.negative_literals();
+
+        // Each positive literal with non-ground infinite-sort variables must be dominated
+        for pos_lit in self.positive_literals() {
+            // Check if this literal has any non-ground infinite-sort variables
+            let has_infinite_var = pos_lit.variables().iter().any(|v| {
+                v.sort().map_or(true, |s| infinite_sorts.contains(s))
+            });
+
+            if !has_infinite_var || pos_lit.is_ground() {
+                continue;
+            }
+
+            // Find a dominating negative literal
+            // Equal atoms satisfy the dominance condition (an atom dominates itself)
+            let dominated = neg_lits.iter().any(|neg_lit| {
+                matches!(order.cmp(&neg_lit.atom, &pos_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+            });
+
+            if !dominated {
+                return false;
+            }
+        }
+
+        true
     }
 
-    /// Check if this clause is negatively sort-restrained for a given set of infinite sorts
-    /// under a given atom ordering (dual of Def. 10).
+    /// Check if this clause is negatively sort-restrained for a given set of infinite sorts.
     pub fn is_sort_negatively_restrained<O: AtomOrder>(
         &self,
-        _infinite_sorts: &HashSet<String>,
-        _order: &O,
+        infinite_sorts: &HashSet<String>,
+        order: &O,
     ) -> bool {
-        todo!("Clause::is_sort_negatively_restrained implementation")
+        use super::order::AtomCmp;
+
+        // Get variables from positive literals that have infinite sorts
+        let pos_vars: HashSet<Var> = self.positive_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .collect();
+
+        // Get variables from negative literals that have infinite sorts
+        let neg_vars: HashSet<Var> = self.negative_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .collect();
+
+        // Must be "sort negatively ground-preserving": infinite-sort vars in C- ⊆ infinite-sort vars in C+
+        if !neg_vars.is_subset(&pos_vars) {
+            return false;
+        }
+
+        let pos_lits = self.positive_literals();
+
+        // Each negative literal with non-ground infinite-sort variables must be dominated
+        for neg_lit in self.negative_literals() {
+            let has_infinite_var = neg_lit.variables().iter().any(|v| {
+                v.sort().map_or(true, |s| infinite_sorts.contains(s))
+            });
+
+            if !has_infinite_var || neg_lit.is_ground() {
+                continue;
+            }
+
+            // Find a dominating positive literal
+            // Equal atoms satisfy the dominance condition (an atom dominates itself)
+            let dominated = pos_lits.iter().any(|pos_lit| {
+                matches!(order.cmp(&pos_lit.atom, &neg_lit.atom), AtomCmp::Greater | AtomCmp::Equal)
+            });
+
+            if !dominated {
+                return false;
+            }
+        }
+
+        true
     }
 
-    /// Check if this clause is sort-refined PVD for a given set of infinite sorts (Def. 13).
-    pub fn is_sort_refined_pvd(&self, _infinite_sorts: &HashSet<String>) -> bool {
-        todo!("Clause::is_sort_refined_pvd implementation")
+    /// Check if this clause is sort-refined PVD for a given set of infinite sorts.
+    ///
+    /// Like PVD, but the depth constraint only applies to variables of infinite sorts.
+    pub fn is_sort_refined_pvd(&self, infinite_sorts: &HashSet<String>) -> bool {
+        // Get variables from positive literals that have infinite sorts
+        let pos_vars: HashSet<Var> = self.positive_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .collect();
+
+        // Get variables from negative literals that have infinite sorts
+        let neg_vars: HashSet<Var> = self.negative_literals()
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().map_or(true, |s| infinite_sorts.contains(s)))
+            .collect();
+
+        // Must be "sort positively ground-preserving" for infinite sorts
+        if !pos_vars.is_subset(&neg_vars) {
+            return false;
+        }
+
+        // For each infinite-sort variable in positive literals, check depth constraint
+        for var in pos_vars {
+            let pos_depth = self.max_var_depth_in_literals(&var, true);
+            let neg_depth = self.max_var_depth_in_literals(&var, false);
+
+            if pos_depth > neg_depth {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+/// Compute the depth of a variable occurrence in a term.
+/// Returns 0 if the variable doesn't occur in the term.
+fn var_depth_in_term(var: &Var, term: &Term, current_depth: usize) -> usize {
+    match term {
+        Term::Var(v) if v == var => current_depth,
+        Term::Var(_) => 0,
+        Term::App(_, args) => {
+            args.iter()
+                .map(|t| var_depth_in_term(var, t, current_depth + 1))
+                .max()
+                .unwrap_or(0)
+        }
     }
 }
 

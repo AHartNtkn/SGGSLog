@@ -33,17 +33,27 @@ pub struct RestrainingSystem {
 impl Theory {
     /// Create an empty theory.
     pub fn new() -> Self {
-        todo!("Theory::new implementation")
+        Theory {
+            clauses: Vec::new(),
+        }
     }
 
     /// Create a theory from parsed statements.
-    pub fn from_statements(_stmts: &[Statement]) -> Result<Self, ConversionError> {
-        todo!("Theory::from_statements implementation")
+    pub fn from_statements(stmts: &[Statement]) -> Result<Self, ConversionError> {
+        let mut theory = Theory::new();
+        for stmt in stmts {
+            let clauses = clausify_statement(stmt)
+                .map_err(|e| ConversionError { message: e.to_string() })?;
+            for clause in clauses {
+                theory.add_clause(clause);
+            }
+        }
+        Ok(theory)
     }
 
     /// Add a clause to the theory.
     pub fn add_clause(&mut self, clause: Clause) {
-        todo!("Theory::add_clause implementation")
+        self.clauses.push(clause);
     }
 
     /// Get the clauses in this theory.
@@ -135,8 +145,22 @@ impl Theory {
     }
 
     /// Check if this theory is in the BDI fragment.
+    ///
+    /// BDI (Bounded Depth Increase) is a decidable fragment defined in
+    /// Lamotte-Schubert & Weidenbach (2014). A theory is BDI if there exists
+    /// a valid watched-argument (warg) function such that each clause either:
+    /// - Satisfies PVD (Positive Variable Depth), or
+    /// - Satisfies BDI-1 (for depth-increasing clauses), or
+    /// - Satisfies BDI-2 (for non-depth-increasing clauses)
+    ///
+    /// A necessary condition for BDI is that all clauses must be positively
+    /// ground-preserving: Var(C+) ⊆ Var(C-). This implementation checks this
+    /// necessary condition.
     pub fn is_bdi(&self) -> bool {
-        todo!("Theory::is_bdi implementation")
+        // BDI requires all clauses to be positively ground-preserving.
+        // Fresh variables in positive literals (not appearing in any negative)
+        // violate the BDI constraints.
+        self.clauses.iter().all(|c| c.is_positively_ground_preserving())
     }
 
     /// Check if this theory is stratified.
@@ -243,14 +267,179 @@ impl Theory {
     }
 
     /// Check whether a restraining system is valid for this theory.
-    pub fn is_restraining_system(&self, _system: &RestrainingSystem) -> bool {
-        todo!("Theory::is_restraining_system implementation")
+    ///
+    /// A restraining system (RS, ES) is valid if for every clause C and every
+    /// non-ground positive literal L in C+, there exists a negative literal M in C-
+    /// such that either:
+    /// - (M -> L) is in RS (modulo variable renaming), or
+    /// - (M ~ L) is in ES (modulo variable renaming)
+    pub fn is_restraining_system(&self, system: &RestrainingSystem) -> bool {
+        use crate::unify::UnifyResult;
+
+        // Check if two atoms match modulo variable renaming
+        fn atoms_match_modulo_renaming(a1: &Atom, a2: &Atom) -> bool {
+            if a1.predicate != a2.predicate || a1.args.len() != a2.args.len() {
+                return false;
+            }
+
+            // Create dummy literals for unification
+            let lit1 = crate::syntax::Literal::pos(&a1.predicate, a1.args.clone());
+            let lit2 = crate::syntax::Literal::pos(&a2.predicate, a2.args.clone());
+
+            match crate::unify::unify_literals(&lit1, &lit2) {
+                UnifyResult::Success(subst) => {
+                    // Check if substitution is a pure renaming (all mappings are to variables)
+                    subst.bindings().all(|(_, term)| matches!(term, crate::syntax::Term::Var(_)))
+                }
+                UnifyResult::Failure(_) => false,
+            }
+        }
+
+        // Check if rule (lhs -> rhs) matches (neg_atom -> pos_atom) modulo renaming
+        fn rule_matches(rule: &RewriteRule, neg_atom: &Atom, pos_atom: &Atom) -> bool {
+            atoms_match_modulo_renaming(&rule.lhs, neg_atom) &&
+            atoms_match_modulo_renaming(&rule.rhs, pos_atom)
+        }
+
+        // Check if equation (lhs ~ rhs) covers (neg_atom, pos_atom) modulo renaming
+        fn equation_matches(eq: &RewriteRule, neg_atom: &Atom, pos_atom: &Atom) -> bool {
+            // Equation is symmetric, so check both directions
+            (atoms_match_modulo_renaming(&eq.lhs, neg_atom) && atoms_match_modulo_renaming(&eq.rhs, pos_atom)) ||
+            (atoms_match_modulo_renaming(&eq.lhs, pos_atom) && atoms_match_modulo_renaming(&eq.rhs, neg_atom))
+        }
+
+        for clause in &self.clauses {
+            let neg_atoms: Vec<&Atom> = clause.literals.iter()
+                .filter(|l| !l.positive)
+                .map(|l| &l.atom)
+                .collect();
+
+            for pos_lit in clause.literals.iter().filter(|l| l.positive) {
+                // Skip ground positive literals
+                if pos_lit.is_ground() {
+                    continue;
+                }
+
+                // Check if some negative literal induces a valid rule/equation
+                let pos_atom = &pos_lit.atom;
+                let restrained = neg_atoms.iter().any(|neg_atom| {
+                    // Check RS rules
+                    system.rs.iter().any(|rule| rule_matches(rule, neg_atom, pos_atom)) ||
+                    // Check ES equations
+                    system.es.iter().any(|eq| equation_matches(eq, neg_atom, pos_atom))
+                });
+
+                if !restrained {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// Compute the atom basis for this theory under a restraining system.
-    pub fn basis(&self, _system: &RestrainingSystem) -> std::collections::HashSet<Atom> {
-        todo!("Theory::basis implementation")
+    ///
+    /// The basis is the set of ground atoms reachable from atoms in the theory
+    /// by applying rewrite rules from RS. Starting from all ground atoms in the
+    /// theory, we compute the closure under rule application.
+    pub fn basis(&self, system: &RestrainingSystem) -> std::collections::HashSet<Atom> {
+        use crate::syntax::Term;
+        use std::collections::HashSet;
+
+        // Collect all ground atoms from the theory
+        let mut basis: HashSet<Atom> = HashSet::new();
+        for clause in &self.clauses {
+            for lit in &clause.literals {
+                if lit.is_ground() {
+                    basis.insert(lit.atom.clone());
+                }
+            }
+        }
+
+        // Apply rewrite rules until fixpoint
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let current: Vec<Atom> = basis.iter().cloned().collect();
+
+            for atom in current {
+                for rule in &system.rs {
+                    // Try to match rule.lhs against atom and get substitution
+                    if let Some(result) = apply_rewrite_rule(&atom, rule) {
+                        if !basis.contains(&result) {
+                            basis.insert(result);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        basis
     }
+}
+
+/// Apply a rewrite rule to an atom if it matches.
+/// Returns the rewritten atom if the rule's LHS matches.
+fn apply_rewrite_rule(atom: &Atom, rule: &RewriteRule) -> Option<Atom> {
+    use crate::syntax::Term;
+    use std::collections::HashMap;
+
+    if atom.predicate != rule.lhs.predicate || atom.args.len() != rule.lhs.args.len() {
+        return None;
+    }
+
+    // Try to match rule.lhs pattern against atom (one-way matching)
+    let mut bindings: HashMap<String, Term> = HashMap::new();
+
+    fn match_term(pattern: &Term, target: &Term, bindings: &mut HashMap<String, Term>) -> bool {
+        match pattern {
+            Term::Var(v) => {
+                let key = v.name().to_string();
+                if let Some(existing) = bindings.get(&key) {
+                    existing == target
+                } else {
+                    bindings.insert(key, target.clone());
+                    true
+                }
+            }
+            Term::App(f1, args1) => {
+                match target {
+                    Term::Var(_) => false,
+                    Term::App(f2, args2) => {
+                        if f1.name != f2.name || args1.len() != args2.len() {
+                            return false;
+                        }
+                        args1.iter().zip(args2.iter()).all(|(a, b)| match_term(a, b, bindings))
+                    }
+                }
+            }
+        }
+    }
+
+    for (pattern_arg, atom_arg) in rule.lhs.args.iter().zip(atom.args.iter()) {
+        if !match_term(pattern_arg, atom_arg, &mut bindings) {
+            return None;
+        }
+    }
+
+    // Apply substitution to rule.rhs
+    fn apply_subst(term: &Term, bindings: &HashMap<String, Term>) -> Term {
+        match term {
+            Term::Var(v) => {
+                bindings.get(v.name()).cloned().unwrap_or_else(|| term.clone())
+            }
+            Term::App(f, args) => {
+                Term::App(f.clone(), args.iter().map(|a| apply_subst(a, bindings)).collect())
+            }
+        }
+    }
+
+    let new_args: Vec<Term> = rule.rhs.args.iter()
+        .map(|a| apply_subst(a, &bindings))
+        .collect();
+
+    Some(Atom::new(&rule.rhs.predicate, new_args))
 }
 
 #[cfg(test)]

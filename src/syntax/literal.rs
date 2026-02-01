@@ -33,17 +33,24 @@ impl Atom {
 
     /// Collect all variables in this atom.
     pub fn variables(&self) -> HashSet<Var> {
-        todo!("Atom::variables implementation")
+        let mut vars = HashSet::new();
+        for arg in &self.args {
+            vars.extend(arg.variables());
+        }
+        vars
     }
 
     /// Check if this atom is ground (contains no variables).
     pub fn is_ground(&self) -> bool {
-        todo!("Atom::is_ground implementation")
+        self.args.iter().all(|arg| arg.is_ground())
     }
 
     /// Apply a substitution to this atom.
     pub fn apply_subst(&self, subst: &Substitution) -> Atom {
-        todo!("Atom::apply_subst implementation")
+        Atom {
+            predicate: self.predicate.clone(),
+            args: self.args.iter().map(|arg| arg.apply_subst(subst)).collect(),
+        }
     }
 }
 
@@ -88,28 +95,34 @@ impl Literal {
 
     /// Return the negation of this literal.
     pub fn negated(&self) -> Literal {
-        todo!("negated implementation")
+        Literal {
+            positive: !self.positive,
+            atom: self.atom.clone(),
+        }
     }
 
     /// Check if this literal is complementary to another.
     /// Two literals are complementary if they have the same atom but opposite signs.
     pub fn is_complementary(&self, other: &Literal) -> bool {
-        todo!("is_complementary implementation")
+        self.positive != other.positive && self.atom == other.atom
     }
 
     /// Collect all variables in this literal.
     pub fn variables(&self) -> HashSet<Var> {
-        todo!("Literal::variables implementation")
+        self.atom.variables()
     }
 
     /// Check if this literal is ground.
     pub fn is_ground(&self) -> bool {
-        todo!("Literal::is_ground implementation")
+        self.atom.is_ground()
     }
 
     /// Apply a substitution to this literal.
     pub fn apply_subst(&self, subst: &Substitution) -> Literal {
-        todo!("Literal::apply_subst implementation")
+        Literal {
+            positive: self.positive,
+            atom: self.atom.apply_subst(subst),
+        }
     }
 }
 
