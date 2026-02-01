@@ -229,6 +229,24 @@ mod tests {
             "intersection should trigger splitting or deletion"
         );
     }
+    
+    #[test]
+    fn derivation_state_step_returns_none_when_done() {
+            // Source: spec.md (timeout_ms=0 times out immediately).
+            let theory = Theory::new();
+            let config = DerivationConfig {
+                timeout_ms: Some(0),
+                initial_interp: InitialInterpretation::AllNegative,
+            };
+            let mut state = DerivationState::new(theory, config);
+            let step = state.step();
+            assert!(step.is_none(), "step must return None when done");
+            assert!(
+                matches!(state.result(), Some(DerivationResult::Timeout)),
+                "done state should be timeout"
+            );
+            assert!(state.step().is_none(), "step must stay None once done");
+        }
 
     #[test]
     fn derive_with_trace_respects_timeout_zero() {
