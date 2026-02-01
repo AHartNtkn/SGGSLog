@@ -231,6 +231,30 @@ fn extension_inherits_constraints_from_side_premises() {
 }
 
 #[test]
+fn extension_not_applied_when_theory_already_satisfied_non_ground() {
+    // SGGSdpFOL: extension applies only when I[Γ] does not satisfy S.
+    // Formal requirement: if I[Γ] |= S, then no SGGS-extension should apply.
+    // Short quote: "since I[Γ ] 6|= S ... SGGS applies SGGS-extension".
+    let theory = theory_from_clauses(vec![Clause::new(vec![Literal::pos(
+        "P",
+        vec![Term::app("f", vec![Term::var("X")])],
+    )])]);
+
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // First extension adds the clause.
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc) => trail.push(cc),
+        other => panic!("Expected initial extension, got {:?}", other),
+    }
+
+    // Now I[Γ] should satisfy S, so extension must not apply again.
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {}
+        other => panic!("Expected NoExtension when theory is already satisfied, got {:?}", other),
+    }
+}
+
+#[test]
 fn extension_requires_side_premises_in_disjoint_prefix() {
     // Side premises must be in dp(Γ); a matching literal outside dp should not be used.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
