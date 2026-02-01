@@ -1,6 +1,6 @@
 //! Query answering for SGGSLog.
 
-use super::{derive, DerivationConfig, DerivationResult};
+use super::{DerivationConfig, DerivationResult, DerivationState};
 use crate::syntax::{Atom, Literal, Query, Term, UserSignature, Var};
 use crate::theory::Theory;
 use crate::unify::{unify_literals, Substitution, UnifyResult};
@@ -27,20 +27,25 @@ pub enum ProjectionPolicy {
 }
 
 /// Streaming query evaluation state.
-#[derive(Debug, Clone)]
+///
+/// Answers are generated lazily as derivation progresses, allowing
+/// infinite answer sets to be enumerated incrementally.
 pub struct QueryStream {
-    #[allow(dead_code)]
     query: Query,
-    #[allow(dead_code)]
     user_signature: Option<UserSignature>,
-    #[allow(dead_code)]
     policy: ProjectionPolicy,
-    /// Pre-computed answers from the derivation
-    answers: Vec<Substitution>,
-    /// Index of next answer to return
-    next_idx: usize,
-    /// Whether derivation timed out
-    timed_out: bool,
+    /// The derivation state (None if derivation is complete)
+    derivation: Option<DerivationState>,
+    /// Answers already seen (for deduplication)
+    seen_answers: HashSet<Vec<(Var, Term)>>,
+    /// Pending answers found but not yet returned
+    pending_answers: Vec<Substitution>,
+    /// Final result if derivation completed
+    final_result: Option<DerivationResult>,
+    /// Number of derivation steps taken
+    steps_taken: usize,
+    /// Minimum steps before extracting answers (allows conflict detection)
+    min_steps: usize,
 }
 
 impl QueryStream {
@@ -51,50 +56,147 @@ impl QueryStream {
         user_signature: Option<UserSignature>,
         policy: ProjectionPolicy,
     ) -> Self {
-        // Run the derivation to get a model
-        let derivation_result = derive(&theory, config);
-
-        let (answers, timed_out) = match derivation_result {
-            DerivationResult::Timeout => (Vec::new(), true),
-            DerivationResult::Unsatisfiable => {
-                // Theory is unsatisfiable - no model exists
-                (Vec::new(), false)
-            }
-            DerivationResult::Satisfiable(model) => {
-                // Extract answers from the model (ground atoms and non-ground patterns)
-                let answers = extract_answers(
-                    &query,
-                    &model.true_atoms,
-                    &model.true_patterns,
-                    user_signature.as_ref(),
-                    policy,
-                );
-                (answers, false)
-            }
-        };
+        // Run at least 2*|theory| steps before extracting answers
+        // This gives time for all clauses to be extended and conflicts to be detected
+        let min_steps = 2 * theory.clauses().len().max(1);
+        let derivation = DerivationState::new(theory, config);
 
         QueryStream {
             query,
             user_signature,
             policy,
-            answers,
-            next_idx: 0,
-            timed_out,
+            derivation: Some(derivation),
+            seen_answers: HashSet::new(),
+            pending_answers: Vec::new(),
+            final_result: None,
+            steps_taken: 0,
+            min_steps,
         }
     }
 
     /// Retrieve the next answer in the stream.
+    ///
+    /// This runs derivation incrementally until a new answer is found,
+    /// the derivation completes, or a timeout is reached.
     pub fn next_answer(&mut self) -> QueryResult {
-        if self.next_idx < self.answers.len() {
-            let ans = self.answers[self.next_idx].clone();
-            self.next_idx += 1;
-            QueryResult::Answer(ans)
-        } else if self.timed_out && self.next_idx == 0 {
-            self.timed_out = false; // Only report timeout once
-            QueryResult::Timeout
-        } else {
-            QueryResult::Exhausted
+        // Return pending answer if available
+        if let Some(ans) = self.pending_answers.pop() {
+            return QueryResult::Answer(ans);
         }
+
+        // If derivation is done, check final result
+        if self.derivation.is_none() {
+            return match &self.final_result {
+                Some(DerivationResult::Timeout) => QueryResult::Timeout,
+                _ => QueryResult::Exhausted,
+            };
+        }
+
+        // Run derivation steps until we find a new answer or complete
+        loop {
+            // Only extract answers after minimum warmup steps
+            // This gives time for conflicts to be detected in unsatisfiable theories
+            if self.steps_taken >= self.min_steps {
+                self.extract_new_answers();
+
+                // Return if we found any
+                if let Some(ans) = self.pending_answers.pop() {
+                    return QueryResult::Answer(ans);
+                }
+            }
+
+            // Try to advance derivation
+            let derivation = self.derivation.as_mut().unwrap();
+            match derivation.step() {
+                Some(_step) => {
+                    self.steps_taken += 1;
+                    // Derivation made progress, loop to check for new answers
+                    continue;
+                }
+                None => {
+                    // Derivation cannot proceed - check result
+                    self.final_result = derivation.result().cloned();
+                    self.derivation = None;
+
+                    // One final extraction from the complete trail
+                    // (already done above, but result tells us outcome)
+                    return match &self.final_result {
+                        Some(DerivationResult::Timeout) => QueryResult::Timeout,
+                        Some(DerivationResult::Unsatisfiable) => QueryResult::Exhausted,
+                        Some(DerivationResult::Satisfiable(_)) => QueryResult::Exhausted,
+                        None => QueryResult::Exhausted,
+                    };
+                }
+            }
+        }
+    }
+
+    /// Extract new answers from the current trail state.
+    fn extract_new_answers(&mut self) {
+        let Some(derivation) = &self.derivation else {
+            return;
+        };
+
+        let trail = derivation.trail();
+
+        // Don't extract answers if there's a conflict on the trail.
+        // Conflicts indicate potential unsatisfiability - we should wait until
+        // the conflict is resolved before returning any answers.
+        if trail.find_conflict().is_some() {
+            return;
+        }
+
+        let init_interp = trail.initial_interpretation();
+        let query_vars: HashSet<Var> = self.query.variables();
+
+        // For single-literal positive queries, match against I-false selected literals
+        // (those are the ones made true by the trail)
+        if self.query.literals.len() == 1 && self.query.literals[0].positive {
+            let query_lit = &self.query.literals[0];
+
+            for clause in trail.clauses() {
+                let selected = clause.selected_literal();
+
+                // I-false selected literals contribute to the model
+                if !init_interp.is_false(selected) || !selected.positive {
+                    continue;
+                }
+
+                // Must have same predicate
+                if selected.atom.predicate != query_lit.atom.predicate {
+                    continue;
+                }
+
+                // Try to unify
+                if let UnifyResult::Success(sigma) = unify_literals(query_lit, selected) {
+                    let projected = project_substitution(
+                        &sigma,
+                        &query_vars,
+                        self.user_signature.as_ref(),
+                        self.policy,
+                    );
+
+                    // Check projection didn't lose required bindings
+                    let orig_bound: HashSet<_> = sigma
+                        .bindings()
+                        .filter(|(v, _)| query_vars.contains(*v))
+                        .map(|(v, _)| v.clone())
+                        .collect();
+                    let proj_bound: HashSet<_> =
+                        projected.bindings().map(|(v, _)| v.clone()).collect();
+
+                    if proj_bound.len() < orig_bound.len() {
+                        continue;
+                    }
+
+                    let canonical = canonical_form(&projected);
+                    if self.seen_answers.insert(canonical) {
+                        self.pending_answers.push(projected);
+                    }
+                }
+            }
+        }
+        // TODO: Handle negative queries and multi-literal queries incrementally
     }
 }
 
@@ -522,3 +624,4 @@ pub fn answer_query_projected(
         policy,
     )
 }
+

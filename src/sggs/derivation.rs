@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 /// Result of SGGS derivation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DerivationResult {
     /// Found refutation (theory is unsatisfiable)
     Unsatisfiable,
@@ -23,7 +23,7 @@ pub enum DerivationResult {
 }
 
 /// A model witnessing satisfiability.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Model {
     /// The ground atoms that are true in this model
     pub true_atoms: HashSet<Atom>,

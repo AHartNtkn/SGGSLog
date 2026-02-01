@@ -474,7 +474,7 @@ fn positive_query_streams_incrementally_over_recursive_theory() {
 
     let mut seen = HashSet::new();
     for _ in 0..3 {
-        match stream.next() {
+        match stream.next_answer() {
             QueryResult::Answer(ans) => {
                 assert!(
                     seen.insert(subst_key(&ans)),
@@ -485,7 +485,7 @@ fn positive_query_streams_incrementally_over_recursive_theory() {
         }
     }
 
-    match stream.next() {
+    match stream.next_answer() {
         QueryResult::Answer(_) => {}
         QueryResult::Exhausted => panic!("expected more answers, got exhausted"),
         QueryResult::Timeout => panic!("expected answer, got timeout"),

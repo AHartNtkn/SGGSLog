@@ -170,13 +170,15 @@ fn find_side_premises(
     let mut side_premise_predicates = std::collections::HashSet::new();
 
     // For each I-true literal, find a matching side premise
+    // Search in REVERSE order (newest first) to ensure recursive theories
+    // use the most recent instances, generating new extensions rather than redundant ones.
     for &lit_idx in i_true_indices {
         let i_true_lit = clause.literals[lit_idx].apply_subst(&combined_subst);
         let complement = i_true_lit.negated();
 
         let mut found = false;
-        for (premise_idx, used) in used_premises.iter_mut().enumerate().take(dp_len) {
-            if *used {
+        for premise_idx in (0..dp_len).rev() {
+            if used_premises[premise_idx] {
                 continue;
             }
 
@@ -202,7 +204,7 @@ fn find_side_premises(
                 // Compose substitutions
                 combined_subst = combined_subst.compose(&sigma);
                 combined_constraint = combined_constraint.and(premise.constraint.clone());
-                *used = true;
+                used_premises[premise_idx] = true;
                 found = true;
                 break;
             }

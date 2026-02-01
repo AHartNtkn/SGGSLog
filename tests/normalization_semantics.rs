@@ -228,7 +228,7 @@ fn arb_formula(depth: u32) -> impl Strategy<Value = Formula> {
     } else {
         prop_oneof![
             arb_pred().prop_map(|p| Formula::atom(Atom::prop(p.as_str()))),
-            arb_formula(depth - 1).prop_map(Formula::not),
+            arb_formula(depth - 1).prop_map(Formula::negation),
             (arb_formula(depth - 1), arb_formula(depth - 1)).prop_map(|(a, b)| Formula::and(a, b)),
             (arb_formula(depth - 1), arb_formula(depth - 1)).prop_map(|(a, b)| Formula::or(a, b)),
             (arb_formula(depth - 1), arb_formula(depth - 1))
