@@ -477,13 +477,41 @@ impl<'a> TrailInterpretation<'a> {
                             }
                         }
                     } else {
-                        // Non-ground lit: uniformly true only if lit is an INSTANCE of selected
-                        // (i.e., selected is more general and covers all ground instances of lit)
-                        // This requires one-way matching: σ(selected) = lit
-                        // Also need constraint to be satisfiable for ALL instances of lit
+                        // Non-ground lit: uniformly true only if:
+                        // 1. lit is an INSTANCE of selected (selected covers all ground instances), AND
+                        // 2. No I-true selected literal blocks any instance (complement not selected)
                         if clause.constraint.is_satisfiable() {
                             if super::extension::is_instance_of(lit, selected) {
-                                return true;
+                                // Check that no I-true selected literal blocks any instance
+                                // A blocking literal is an I-true selected literal that unifies
+                                // with the complement of lit (making some instance false)
+                                let complement = lit.negated();
+                                let mut blocked = false;
+                                for other_clause in &self.trail.clauses {
+                                    let other_selected = other_clause.selected_literal();
+                                    // I-true selected literals can block instances
+                                    if self.trail.initial_interp.is_true(other_selected) {
+                                        if complement.positive == other_selected.positive
+                                            && complement.atom.predicate
+                                                == other_selected.atom.predicate
+                                        {
+                                            // If complement unifies with other_selected,
+                                            // some instance of lit is false
+                                            if crate::unify::unify_literals(
+                                                &complement,
+                                                other_selected,
+                                            )
+                                            .is_success()
+                                            {
+                                                blocked = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if !blocked {
+                                    return true;
+                                }
                             }
                         }
                     }

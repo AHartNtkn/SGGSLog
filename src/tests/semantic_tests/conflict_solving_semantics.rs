@@ -69,8 +69,8 @@ fn conflict_solving_chain_reaches_empty_clause() {
     let conflict_clause = trail
         .clauses()
         .iter()
-        .find(|c| c.selected_literal() == &Literal::pos("Q", vec![Term::var("X")]))
-        .expect("conflict clause with selected Q(X) not found")
+        .find(|c| c.selected_literal() == &Literal::pos("Q", vec![a.clone()]))
+        .expect("conflict clause with selected Q(a) not found")
         .clone();
     let res1 = sggs_resolution(&conflict_clause, &trail);
     let cc = match res1 {
