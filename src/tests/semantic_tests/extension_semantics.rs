@@ -64,6 +64,65 @@ fn extension_returns_no_extension_when_complete() {
 }
 
 #[test]
+fn extension_does_not_extend_when_clause_already_satisfied() {
+    // SGGS-extension applies only if I[Γ] ⊭ S and Γ = dp(Γ).
+    // If the current trail already makes a clause true, extension must not re-add it.
+    // Source: "On SGGS and Horn Clauses" (paper6), progress condition:
+    // "If ⊥ ∉ Γ and I[Γ] ⊭ S ... SGGS applies SGGS-extension ..."
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // Selected p makes clause (p ∨ q) true in I[Γ].
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::pos("p", vec![])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::pos("p", vec![]),
+        Literal::pos("q", vec![]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::NoExtension => {}
+        other => panic!(
+            "Expected NoExtension when clause already satisfied, got {:?}",
+            other
+        ),
+    }
+}
+
+#[test]
+fn extension_selects_literal_with_proper_instances() {
+    // Proper instances: an instance is proper if it is not satisfied by I^p(Γ)
+    // and its complement is not in I^p(Γ). If all instances of L are complementary,
+    // L has no proper instances and should not be selected.
+    // Source: "On SGGS and Horn Clauses" (paper6), pcgi definition:
+    // "A pcgi ... is not satisfied by I^p(Γ|n−1) ... and ¬L ∉ I^p(Γ|n−1)."
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // A unit clause ¬p(X) contributes all ground instances of ¬p to I^p(Γ),
+    // making every p(t) complementary.
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("p", vec![Term::var("X")])]),
+        0,
+    ));
+
+    let theory = theory_from_clauses(vec![Clause::new(vec![
+        Literal::pos("p", vec![Term::var("X")]),
+        Literal::pos("q", vec![Term::var("X")]),
+    ])]);
+
+    match sggs_extension(&trail, &theory) {
+        ExtensionResult::Extended(cc)
+        | ExtensionResult::Conflict(cc)
+        | ExtensionResult::Critical { clause: cc, .. } => {
+            assert_eq!(cc.selected_literal().atom.predicate, "q");
+        }
+        ExtensionResult::NoExtension => {
+            panic!("Expected extension to apply for a falsified clause");
+        }
+    }
+}
+
+#[test]
 fn extension_uses_simultaneous_unification_of_i_true_literals() {
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(ConstrainedClause::new(

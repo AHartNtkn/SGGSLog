@@ -57,3 +57,39 @@ Tests are organized as:
 - Semantic tests in `src/tests/`
 - Integration tests in `tests/` (parser semantics, SGGS properties, theory semantics)
 
+## Test Timing Expectations
+
+**No tests are designed to be slow.** All tests use small theories and should complete in under a second when properly implemented.
+
+### Tests That Fail Immediately (Not Slow)
+
+Some tests fail instantly due to `todo!()` stubs in unimplemented methods:
+
+- **Fragment detection methods** in `src/syntax/clause.rs`:
+  `is_restrained`, `is_negatively_restrained`, `is_pvd`, `is_sort_restrained`, `is_sort_negatively_restrained`, `is_sort_refined_pvd`
+
+- **Theory classification methods** in `src/theory/theory.rs`:
+  `is_bdi`, `is_restraining_system`, `basis`
+
+These cause `fragment_semantics` and related tests to panic with "not yet implemented". This is expected until implementation.
+
+### Slow Tests Indicate Bugs
+
+If any test takes more than a few seconds, it indicates a problem:
+- **Infinite loop in derivation** - SGGS search not terminating
+- **Missing termination condition** - Derivation continues beyond fixed point
+- **Inefficient algorithm** - Exponential blowup in search
+
+Tests with `timeout_ms: None` run derivations on decidable fragments that must terminate. If they hang, the fragment classification or derivation has a bug.
+
+### Standard Test Timeout
+
+Always use a 10-second timeout when running tests to catch infinite loops:
+
+```bash
+timeout 10 cargo test           # Run all tests
+timeout 10 cargo test name      # Run specific test
+```
+
+Do not vary this timeout arbitrarily. 10 seconds is sufficient for any correctly-implemented test.
+
