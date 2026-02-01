@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "sggslog-kernel",
+    "{connection_file}"
+  ],
+  "display_name": "SGGSLog",
+  "language": "sggslog",
+  "interrupt_mode": "signal",
+  "metadata": {
+    "debugger": false
+  }
+}

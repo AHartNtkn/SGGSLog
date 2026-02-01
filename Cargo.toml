@@ -3,7 +3,25 @@ name = "sggslog"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "sggslog"
+path = "src/main.rs"
+
+[[bin]]
+name = "sggslog-kernel"
+path = "src/jupyter/bin.rs"
+
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zeromq = "0.4"
+bytes = "1.5"
+hmac = "0.12"
+sha2 = "0.10"
+uuid = { version = "1.0", features = ["v4"] }
+hex = "0.4"
+dirs = "5.0"
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 proptest = "1.4"
