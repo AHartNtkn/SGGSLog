@@ -17,10 +17,6 @@ use crate::sggs::{
 fn conflict_solving_chain_reaches_empty_clause() {
     // Theory: P(a), ¬P(x) ∨ Q(x), ¬Q(a)
     // Build the trail explicitly to avoid assuming a deterministic extension order.
-    //
-    // Conflict clause criterion (Bonacina 2016, §3): "if all literals of C are uniformly false in I [Γ ], C is a conflict clause."
-    // Conflict explanation (Bonacina 2016, §3): "resolves a conflict clause and a justification".
-    // Move ordering (SGGSdpFOL, §3, Fig. 2 discussion): "moves B B D[M ] to the left of the clause A B C[L] in dp(Γ ) to which M is assigned."
     let a = Term::constant("a");
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
     trail.push(ConstrainedClause::with_constraint(
@@ -28,11 +24,27 @@ fn conflict_solving_chain_reaches_empty_clause() {
         Constraint::True,
         0,
     ));
-    // Select Q(X) to make Q(a) true and justify ¬Q(a).
+    // Extension must add the instance produced by unifying the I-true literal P(a)
+    // with ¬P(x) ∨ Q(x), yielding ¬P(a) ∨ Q(a) (or an equivalent constraint).
+    //
+    // Formal basis (BP17 / bonacina2016.txt):
+    // - Extension is defined as instance generation: "SGGS-extension inference scheme
+    //   generates the clause A ⊢ E = (∧ Bj αβ) ⊢ Cαβ".
+    // - The instance is built by unification with side premises: "simultaneous most general
+    //   unifier α such that Lj α = ¬Mj α".
+    // - This is model-driven: "SGGS-extension unifies literals with I -false selected literals".
+    //
+    // Concrete example (same source, Example 6):
+    // - "SGGS-extension generates Γ2 = [P(a)], ¬P(a) ∨ [Q(f(y))]".
+    //   The non-ground clause ¬P(x) ∨ Q(f(y)) does not appear; the instance ¬P(a) ∨ Q(f(y))
+    //   does, because α = {x ← a} is applied.
+    //
+    // Therefore, the trail in this test must contain the instantiated clause ¬P(a) ∨ Q(a),
+    // not the non-ground ¬P(x) ∨ Q(x). That alignment is required by the SGGS definition.
     trail.push(ConstrainedClause::with_constraint(
         Clause::new(vec![
-            Literal::neg("P", vec![Term::var("X")]),
-            Literal::pos("Q", vec![Term::var("X")]),
+            Literal::neg("P", vec![a.clone()]),
+            Literal::pos("Q", vec![a.clone()]),
         ]),
         Constraint::True,
         1,
@@ -44,6 +56,10 @@ fn conflict_solving_chain_reaches_empty_clause() {
     );
     trail.push(conflict.clone());
 
+    // Conflict/move/resolution justification:
+    // - Conflict clause criterion (BP17, bonacina2016.txt, §3): "if all literals of C are uniformly false in I [Γ ], C is a conflict clause."
+    // - Conflict explanation (BP17, bonacina2016.txt, §3): "resolves a conflict clause and a justification".
+    // - Move ordering (SGGSdpFOL.txt, §3, Fig. 2 discussion): "moves B B D[M ] to the left of the clause A B C[L] in dp(Γ ) to which M is assigned."
     // Move the I-all-true conflict clause ¬Q(a) before its justifying clause (¬P(x) ∨ Q(x)).
     let conflict_idx = trail.clauses().len() - 1;
     sggs_move(&mut trail, conflict_idx).expect("move failed");
