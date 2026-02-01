@@ -44,15 +44,26 @@ fn sggs_move_rejects_non_conflict_clause() {
 }
 
 #[test]
-fn sggs_move_rejects_conflict_without_assignment() {
-    // A conflict clause with no assignment should not be movable.
+fn sggs_move_succeeds_with_valid_assignment() {
+    // SGGSdpFOL (Fig. 2, move rule) formal conditions:
+    // - Assuming A ⊲ C[L] ∈ dp(Γ), D[M] is I-all-true, and M is assigned to A ⊲ C[L].
+    // - Move applies if ¬Gr(B ⊲ M) = pcgi(A ⊲ L, Γ) and no other literal of D is assigned to C.
+    // Quote: "if ¬Gr(B B M) = pcgi(A B L, Γ ) and no other literal of D is assigned to C".
+    // A conflict clause with a valid justification in dp(Γ) should be movable.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // P(a) is I-false, contributes to model, makes ¬P(a) uniformly false.
     trail.push(ConstrainedClause::new(
         Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
         0,
     ));
-    let result = sggs_move(&mut trail, 0);
-    assert!(matches!(result, Err(MoveError::NoValidPosition)));
+    // ¬P(a) is now a conflict clause (uniformly false in I[Γ]).
+    trail.push(ConstrainedClause::new(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        0,
+    ));
+    // Move should work here because P(a) justifies ¬P(a).
+    let result = sggs_move(&mut trail, 1);
+    assert!(result.is_ok(), "move should succeed with valid justification");
 }
 
 #[test]

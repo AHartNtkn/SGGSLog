@@ -112,6 +112,84 @@ fn assignment_selected_i_true_only_if_possible() {
 }
 
 #[test]
+fn conflict_requires_assignment_for_selected_i_true_literal() {
+    // Source: Semantically_Guided_Goal_Sensitive_Reaso.pdf, Def. 12 (Assignment),
+    // and SGGSdpFOL.pdf (conflict clause definition near Def. 1).
+    //
+    // Formal requirements:
+    // - Conflict clause: all literals of the clause are uniformly false in I[Γ].
+    // - Assignment (I-true literals): if an I-true literal is not selected, it must be assigned;
+    //   if the selected literal is I-true and depends on some earlier selected literal, then it
+    //   must be assigned (rightmost among assignments in the clause).
+    //
+    // Short quotes:
+    // - "is a conflict clause, if all the literals of Cn are uniformly false in I[Γ]." (SGGSdpFOL)
+    // - "selected I-true literals are assigned if possible;" (Bonacina 2016, Def. 12)
+
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // I-false selected literal makes P(a) true in I[Γ].
+    trail.push(ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::pos("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    ));
+    // I-true literal ¬P(a) is uniformly false in I[Γ] and becomes a conflict clause.
+    trail.push(ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    ));
+
+    let assigns = compute_assignments(&trail);
+    let conflict_idx = 1;
+    let selected_idx = 0;
+    assert_eq!(
+        assigns.assigned_to(conflict_idx, selected_idx),
+        Some(0),
+        "conflict selected I-true literal must be assigned when possible"
+    );
+
+    let interp = trail.interpretation();
+    assert!(
+        trail.clauses()[conflict_idx].is_conflict(&interp),
+        "clause should be a conflict under I[Γ]"
+    );
+}
+
+#[test]
+fn i_all_true_selected_unassigned_is_not_conflict() {
+    // Source: Semantically_Guided_Goal_Sensitive_Reaso.pdf, Def. 10 (Induced interpretation)
+    // and Def. 12 (Assignment).
+    //
+    // Formal requirement:
+    // - For ground literals not determined by I^p(Γ), I[Γ] agrees with I. Thus, an I-true
+    //   selected literal with no dependency remains true in I[Γ], so the clause is not a conflict.
+    //
+    // Short quote:
+    // - "if at (L) ∉ at (I p (Ŵ)), then I [Ŵ] |= L if and only if I |= L." (Bonacina 2016, Def. 10)
+    let mut trail = Trail::new(InitialInterpretation::AllNegative);
+    // Single I-all-true clause, no earlier clause to justify assignment.
+    trail.push(ConstrainedClause::with_constraint(
+        Clause::new(vec![Literal::neg("P", vec![Term::constant("a")])]),
+        Constraint::True,
+        0,
+    ));
+
+    let assigns = compute_assignments(&trail);
+    assert_eq!(
+        assigns.assigned_to(0, 0),
+        None,
+        "no dependency => selected I-true literal may remain unassigned"
+    );
+
+    let interp = trail.interpretation();
+    assert!(
+        !trail.clauses()[0].is_conflict(&interp),
+        "unassigned I-true selected literal should not yield a conflict"
+    );
+}
+
+#[test]
 fn assignment_ignores_i_false_literals() {
     // Under I⁻, positive literals are I-false and should not be assigned.
     let mut trail = Trail::new(InitialInterpretation::AllNegative);
