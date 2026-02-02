@@ -93,3 +93,7 @@ timeout 10 cargo test name      # Run specific test
 
 Do not vary this timeout arbitrarily. 10 seconds is sufficient for any correctly-implemented test.
 
+# README
+
+@README.md
+
